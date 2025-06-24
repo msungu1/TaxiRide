@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'UserProvider/UserProvider.dart';
 import 'package:sizemore_taxi/Onetime2/OnetimetwoScreen.dart';
 import 'package:sizemore_taxi/adminuser/AdminScreen.dart';
 import 'package:sizemore_taxi/emergency/EmergencyContactScreen.dart';
@@ -18,8 +20,16 @@ import 'onetimescreen/OnetimeScreen.dart';
 
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
+
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
