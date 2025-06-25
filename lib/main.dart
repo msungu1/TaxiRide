@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:sizemore_taxi/changepassword/ChangePasswordScreen.dart';
 import 'UserProvider/UserProvider.dart';
 import 'package:sizemore_taxi/Onetime2/OnetimetwoScreen.dart';
 import 'package:sizemore_taxi/adminuser/AdminScreen.dart';
@@ -12,6 +13,7 @@ import 'package:sizemore_taxi/tripdetails/TripDetailsScreen.dart';
 import 'package:sizemore_taxi/triphistory/TripHostryScreen.dart';
 import 'package:sizemore_taxi/userdetails/UserDetailsScreen.dart';
 import 'ProfileScreen/ProfileScreen.dart';
+import 'package:sizemore_taxi/forgort/ForgotPasswordScreen.dart';
 import 'splash_screen/SplashScreen.dart';
 import 'login_screen/LoginScreen.dart';
 import 'registration_Screen/RegistrationScreen.dart';
@@ -66,6 +68,8 @@ class MyApp extends StatelessWidget {
         '/userdetails' : (context) => const UserDetailsScreen(),
        '/triphistory' : (context) => const  TripHistoryScreen(),
        '/tripdetails' :(contex) => const  TripDetailsScreen(),
+       '/forgot': (context) => const ForgotPasswordScreen(),
+       '/change': (context) => const ChangePasswordScreen(),
        // '/main': (context) => const MainScreen(), // 👈 Add this
 
 

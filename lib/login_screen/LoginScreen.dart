@@ -76,11 +76,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 20),
                 const Text(
                   'Welcome Back To',
-                  style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Image.asset('assets/images/logo.png', height: 160),
-
                 const SizedBox(height: 16),
 
                 buildInput("Phone or Email", phoneController, false),
@@ -92,7 +95,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: isLoading ? null : loginUser,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFFD700),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(50),
+                    ),
                     minimumSize: const Size(double.infinity, 48),
                   ),
                   child: isLoading
@@ -100,8 +105,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       : const Text('Login', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
 
+                const SizedBox(height: 16),
+
+                // Forgot Password button
                 TextButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/forgot');
+                  },
                   child: const Text(
                     'Forgot Password?',
                     style: TextStyle(
@@ -111,8 +121,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
+
+                // Sign Up button
                 TextButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/register');
+                  },
                   child: const Text(
                     'Sign Up',
                     style: TextStyle(
