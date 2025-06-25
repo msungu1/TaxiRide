@@ -21,14 +21,13 @@ import 'onetimescreen/OnetimeScreen.dart';
 
 void main() {
   runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => UserProvider()),
-      ],
+    ChangeNotifierProvider(
+      create: (_) => UserProvider(),
       child: const MyApp(),
     ),
   );
 }
+
 
 
 class MyApp extends StatelessWidget {

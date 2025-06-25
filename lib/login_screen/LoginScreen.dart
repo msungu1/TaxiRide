@@ -1,246 +1,138 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../UserProvider/UserProvider.dart';
 
-
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-// import 'package:flutter_svg/flutter_svg.dart';
-
-void main() {
-  runApp(const StitchLoginApp());
-}
-
-class StitchLoginApp extends StatelessWidget {
-  const StitchLoginApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Login',
-      debugShowCheckedModeBanner: true,
-      theme: ThemeData(
-       scaffoldBackgroundColor:Color(0xFF40402b),
-
-        textTheme: GoogleFonts.spaceGroteskTextTheme(ThemeData.dark().textTheme).apply(
-          bodyColor: Colors.red,
-          displayColor: Colors.black,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFF41402b),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
-          ),
-          hintStyle: TextStyle(color: Colors.blue),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-        ),
-      ),
-      home: const LoginScreen(),
-    );
-  }
-}
-// =======================
-
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF1F1F15),
-      resizeToAvoidBottomInset: true, // Ensures space when keyboard appears
-
-      // Add this line to apply the olive black background
-
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            // Top bar with question icon
-
-            padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children:[
-                  Row(
-
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Container(
-                    height: 48,
-                    width: 48,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.transparent,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.help_outline, color: Colors.white),
-                      onPressed: () {},
-
-                  ),
-              ),
-
-            ],
-            ),
-
-            // Welcome Text
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text(
-                'Welcome Back To',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color:Colors.white,
-
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
-
-              ),
-            ),
-
-            // 👇 Add this image widget right below the text
-            // Padding(
-            //   padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
-            //   child: Image.asset(
-            //     'assets/images/logo.png',
-            //     // width: double.infinity,
-            //     // width: 500, // <-- Set width to 100
-            //
-            //     height: 140,
-            //     fit: BoxFit.fitWidth, // properly assigned
-            //
-            //     // fit: BoxFit.contain,
-            //   ),
-            // ),
-
-
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
-                    child: Container(
-                      width: double.infinity,
-                      height: 160,
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ),
-
-
-
-
-
-
-
-                  const SizedBox(height: 8),
-
-            // Phone Number Field
-            const InputField(
-              label: 'Phone Number',
-              hint: 'Enter your phone number',
-              obscureText: false,
-
-
-            ),
-
-
-
-            // Password Field
-            const InputField(
-              label: 'Password',
-              hint: 'Enter your password',
-              obscureText: true,
-            ),
-
-
-                  const SizedBox(height: 24),
-
-            // Login Button
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFFD700), // Gold
-                    // foregroundColor: const Color(0xFF1f1f14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(50),
-                    ),
-                  ),
-                  onPressed: () {},
-                  child: const Text(
-                    'Login',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.15,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // Forgot Password and Sign Up
-            TextButton(
-              onPressed: () {},
-              child: const Text(
-                'Forgot Password?',
-                style: TextStyle(
-                  color: Color(0xFFbebe0d),
-                  fontSize: 20,
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            ),
-
-
-            TextButton(
-              onPressed: () {},
-              child: const Text(
-                'Sign Up',
-                style: TextStyle(
-                  color: Color(0xFFbebe0d),
-                  fontSize: 18,
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-
-        ],
-        ),
-       ),
-       ),
-
-      ),
-    );
-  }
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class InputField extends StatelessWidget {
-  final String label;
-  final String hint;
-  final bool obscureText;
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController phoneController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+  bool isLoading = false;
 
-  const InputField({
-    super.key,
-    required this.label,
-    required this.hint,
-    required this.obscureText,
-  });
+  Future<void> loginUser() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final identifier = phoneController.text.trim();
+    final password = passwordController.text;
+
+    if (identifier.isEmpty || password.isEmpty) {
+      showMessage("Please fill all fields");
+      return;
+    }
+
+    setState(() => isLoading = true);
+
+    final url = Uri.parse('https://sizemoretaxi.onrender.com/api/auth/login');
+
+    try {
+      final res = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "identifier": identifier,
+          "password": password,
+        }),
+      );
+
+      final data = jsonDecode(res.body);
+
+      if (res.statusCode == 200 && data['data'] != null) {
+        userProvider.setUser(data['data']['user']);
+        Navigator.pushReplacementNamed(context, '/profile');
+      } else {
+        showMessage(data['message'] ?? 'Login failed');
+      }
+    } catch (e) {
+      showMessage('Network error. Please try again.');
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  void showMessage(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.red),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1F1F15),
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                const SizedBox(height: 20),
+                const Text(
+                  'Welcome Back To',
+                  style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                Image.asset('assets/images/logo.png', height: 160),
+
+                const SizedBox(height: 16),
+
+                buildInput("Phone or Email", phoneController, false),
+                buildInput("Password", passwordController, true),
+
+                const SizedBox(height: 24),
+
+                ElevatedButton(
+                  onPressed: isLoading ? null : loginUser,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFD700),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(50)),
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
+                  child: isLoading
+                      ? const CircularProgressIndicator(color: Colors.black)
+                      : const Text('Login', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+
+                TextButton(
+                  onPressed: () {},
+                  child: const Text(
+                    'Forgot Password?',
+                    style: TextStyle(
+                      color: Color(0xFFbebe0d),
+                      fontSize: 20,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {},
+                  child: const Text(
+                    'Sign Up',
+                    style: TextStyle(
+                      color: Color(0xFFbebe0d),
+                      fontSize: 18,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildInput(String label, TextEditingController controller, bool isPassword) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -250,26 +142,23 @@ class InputField extends StatelessWidget {
               color: Colors.white,
               fontSize: 16,
               fontWeight: FontWeight.w500,
-              // backgroundColor: Colors.green,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           TextField(
-            obscureText: obscureText,
+            controller: controller,
+            obscureText: isPassword,
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
-            hintText: hint,
-            filled: true,
-              hintStyle: const TextStyle(
-                color: Color(0xFF909076), // ✅ hint color here
-              ),
+              hintText: 'Enter your $label',
+              hintStyle: const TextStyle(color: Color(0xFF909076)),
               fillColor: const Color(0xFF41402C),
+              filled: true,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12), // adjust radius here
-                borderSide: BorderSide.none, // remove default border line
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
               ),
             ),
-
           ),
         ],
       ),
