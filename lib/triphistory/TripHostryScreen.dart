@@ -135,30 +135,31 @@ class TripHistoryScreen extends StatelessWidget {
           );
         },
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: const Color(0xFF27241b),
-        selectedItemColor: Colors.black,
-        unselectedItemColor: const Color(0xFFbab19c),
-        showUnselectedLabels: true,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.local_taxi),
-            label: 'Trips',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance_wallet),
-            label: 'Wallet',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Account',
-          ),
-        ],
-      ),
+      // bottomNavigationBar: BottomNavigationBar(
+      //   backgroundColor: const Color(0xFF27241b),
+      //   selectedItemColor: Colors.black,
+      //   unselectedItemColor: const Color(0xFFbab19c),
+      //   showUnselectedLabels: true,
+      //   items: const [
+      //     BottomNavigationBarItem(
+      //       icon: Icon(Icons.home),
+      //       label: 'Home',
+      //     ),
+      //     BottomNavigationBarItem(
+      //       icon: Icon(Icons.local_taxi),
+      //       label: 'Trips',
+      //     ),
+      //     BottomNavigationBarItem(
+      //       icon: Icon(Icons.account_balance_wallet),
+      //       label: 'Wallet',
+      //     ),
+      //     BottomNavigationBarItem(
+      //       icon: Icon(Icons.person),
+      //       label: 'Account',
+      //     ),
+      //   ],
+      // ),
+      //
     );
   }
 }

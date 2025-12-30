@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:sizemore_taxi/UserProvider/UserProvider.dart';
 
+/// This is the splash screen that shows your app logo
+/// for a few seconds when the app starts.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -15,27 +15,26 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
 
+    /// Wait for 2 seconds before moving to the login screen
     Timer(const Duration(seconds: 2), () {
-      final userProvider = Provider.of<UserProvider>(context, listen: false);
-
-      // If user is logged in, go to profile, otherwise to login
-      if (userProvider.phone != null && userProvider.phone!.isNotEmpty) {
-        Navigator.pushReplacementNamed(context, '/profile');
-      } else {
-        Navigator.pushReplacementNamed(context, '/register');
-      }
+      // Navigate to the login screen after splash
+      Navigator.pushReplacementNamed(context, '/login');
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Set background color of the splash screen
       backgroundColor: const Color(0xFF1e1e15),
+
+      // Show your logo in the center
       body: Center(
         child: Image.asset(
-          'assets/images/logo.png',
+          'assets/images/logo.png', // Make sure this logo exists
           width: double.infinity,
           height: double.infinity,
+          fit: BoxFit.cover, // Make it stretch to fill screen
         ),
       ),
     );

@@ -31,7 +31,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   google_fonts: ^6.1.0  # (or the latest version)
@@ -41,6 +40,25 @@ dependencies:
 
   provider: ^6.1.1
   http: ^1.4.0
+#  fluttertoast: ^8.2.10  # (or the latest version)
+  font_awesome_flutter: ^10.6.0
+  csv: ^5.0.2  # or the latest version
+  shared_preferences: ^2.2.2  # or latest
+#  flutter_secure_storage: ^9.2.2
+  url_launcher: ^6.3.0   # (latest as of now)
+  geolocator: ^12.0.0
+  geocoding: ^3.0.0
+  google_places_flutter: ^2.1.1
+  google_maps_flutter: ^2.5.0
+  permission_handler: ^12.0.1
+  google_maps_flutter_web: ^0.5.7+1
+  flutter_dotenv: ^5.1.0
+#  flutter_google_places_sdk: ^0.3.9
+  flutter_google_places_sdk: ^0.4.2+1
+  flutter_secure_storage: ^10.0.0
+  fluttertoast: ^8.2.10
+
+
 
 
 #  flutter_svg: ^2.0.7  # ← Moved here ✅
@@ -78,6 +96,7 @@ flutter:
     - assets/images/sedan.png
     - assets/images/neta.png
     - assets/images/chopper.jpeg
+    - assets/.env
 
 
 

@@ -1,10 +1,22 @@
 import 'package:flutter/material.dart';
+import '../usermodel/UserModel.dart'; // Update path as needed
+import '../adminapiservice/admin_api_service.dart'; // Update path as needed
 
 class UserDetailsScreen extends StatelessWidget {
-  const UserDetailsScreen({super.key});
+  final UserModel user;
+
+  const UserDetailsScreen({super.key, required this.user});
 
   @override
   Widget build(BuildContext context) {
+    final nameController = TextEditingController(text: user.name);
+    final emailController = TextEditingController(text: user.email);
+    final phoneController = TextEditingController(text: user.phone);
+    final passwordController = TextEditingController();
+    final carNumberController = TextEditingController();
+    final carTypeController = TextEditingController();
+    final carModelController = TextEditingController();
+
     final inputDecoration = InputDecoration(
       filled: true,
       fillColor: const Color(0xFF2d2b20),
@@ -33,23 +45,25 @@ class UserDetailsScreen extends StatelessWidget {
             fontSize: 20,
           ),
         ),
-        leading: const Icon(Icons.arrow_back, color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            const CircleAvatar(
+            CircleAvatar(
               radius: 64,
-              backgroundImage: NetworkImage(
-                'https://lh3.googleusercontent.com/aida-public/AB6AXuCVn37B9INz829-OkISbrXy9dCItVZcNlixLKf4HiWQ9imwuTmSzrW08us5jUmNTY9Bn-O_ZIx2ecjXH6L4kI1Y0Zt9dDLCOuZ3Vhot0RkeRkfYF0n1OCesDsotw3yjYD9xuuKZOkkgL1kpx1R3kxNpPHevojlfE7x0yag4GzJNj6JCQ23RIoim7kmZV9kTaJ5_YrCyoP3YyBnMamic7H4-rfI7STVPChHd-A_SNv2yqKoST3Xme3A5l6UaGCSZDpCCB4BPg5G17RzY',
-              ),
+              backgroundImage: user.photoUrl != null && user.photoUrl!.isNotEmpty
+                  ? NetworkImage(user.photoUrl!)
+                  : const AssetImage('assets/images/default_avatar.png') as ImageProvider,
             ),
             const SizedBox(height: 12),
-            const Text('Allan', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-            const Text('sizemoretaxi@email.com', style: TextStyle(color: Color(0xFFbbb8a0))),
-            const Text('', style: TextStyle(color: Color(0xFFbbb8a0))),
+            Text(user.name, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+            Text(user.email, style: const TextStyle(color: Color(0xFFbbb8a0))),
             const SizedBox(height: 24),
 
             Wrap(
@@ -64,13 +78,13 @@ class UserDetailsScreen extends StatelessWidget {
             ),
 
             const SizedBox(height: 24),
-            _buildInputField('Name', inputDecoration),
-            _buildInputField('Email', inputDecoration),
-            _buildInputField('Phone Number', inputDecoration),
-            _buildInputField('Password', inputDecoration, obscureText: true),
-            _buildInputField('Car Number', inputDecoration),
-            _buildInputField('Car Type', inputDecoration),
-            _buildInputField('Car Model', inputDecoration),
+            _buildInputField('Name', inputDecoration, controller: nameController),
+            _buildInputField('Email', inputDecoration, controller: emailController),
+            _buildInputField('Phone Number', inputDecoration, controller: phoneController),
+            _buildInputField('Password', inputDecoration, controller: passwordController, obscureText: true),
+            _buildInputField('Car Number', inputDecoration, controller: carNumberController),
+            _buildInputField('Car Type', inputDecoration, controller: carTypeController),
+            _buildInputField('Car Model', inputDecoration, controller: carModelController),
 
             const SizedBox(height: 20),
             SizedBox(
@@ -78,13 +92,39 @@ class UserDetailsScreen extends StatelessWidget {
               height: 48,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFFFF00), // Bright yellow
+                  backgroundColor: const Color(0xFFFFFF00),
                   foregroundColor: const Color(0xFF1e1d15),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(50),
                   ),
                 ),
-                onPressed: () {},
+                onPressed: () async {
+                  try {
+                    final updatedData = {
+                      'name': nameController.text,
+                      'email': emailController.text,
+                      'phone': phoneController.text,
+                      if (passwordController.text.isNotEmpty) 'password': passwordController.text,
+                      'carNumber': carNumberController.text,
+                      'carType': carTypeController.text,
+                      'carModel': carModelController.text,
+                    };
+
+                    await AdminApiService.updateUser(user.id, updatedData);
+
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('User updated successfully!')),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Failed to update user: $e')),
+                      );
+                    }
+                  }
+                },
                 child: const Text('Save Changes'),
               ),
             ),
@@ -95,13 +135,18 @@ class UserDetailsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInputField(String label, InputDecoration decoration, {bool obscureText = false}) {
+  Widget _buildInputField(String label, InputDecoration decoration,
+      {bool obscureText = false, TextEditingController? controller}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: TextField(
+        controller: controller,
         obscureText: obscureText,
         style: const TextStyle(color: Colors.white),
-        decoration: decoration.copyWith(labelText: label, labelStyle: const TextStyle(color: Colors.white)),
+        decoration: decoration.copyWith(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.white),
+        ),
       ),
     );
   }

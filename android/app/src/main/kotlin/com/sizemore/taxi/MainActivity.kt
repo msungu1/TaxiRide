@@ -1,4 +1,4 @@
-package com.example.sizemore_taxi
+package com.sizemore.taxi
 
 import io.flutter.embedding.android.FlutterActivity
 
