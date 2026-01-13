@@ -1,0 +1,215 @@
+import 'package:flutter/material.dart';
+
+void main() {
+  runApp(const StitchDesignApp());
+}
+
+class StitchDesignApp extends StatelessWidget {
+  const StitchDesignApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Stitch Design',
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF232310),
+        fontFamily: 'SpaceGrotesk',
+      ),
+      home: const CreateAccountScreen(),
+    );
+  }
+}
+
+class CreateAccountScreen extends StatelessWidget {
+  const CreateAccountScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Column(
+        children: [
+          // Header with Back Arrow and Title
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 40, 16, 8),
+            child: Row(
+              children: [
+                const Icon(Icons.arrow_back, color: Colors.white),
+                const Spacer(),
+                const Text(
+                  'Create Account',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const Spacer(),
+                const SizedBox(width: 24), // Empty space to balance
+              ],
+            ),
+          ),
+
+          // Image Container
+          Container(
+            height: 218,
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              image: const DecorationImage(
+                image: NetworkImage(
+                  'https://lh3.googleusercontent.com/aida-public/AB6AXuAxkSWdYmJMZrF0bW3azJAov6pXS7cDkpAI7a9It_LoSjmZvdEBrZvkC3UzzGN8ye7OaMX7aNSK7_dLZEeA2_kWxctltS9CE52gwERkqXvL9Y1nxaJy71Yu1MGK29kM0NIsdFBJOFKWTDbmEEaKoRPEzZXjk5rcclW5VBLG-T0ZAsOKjvkSUQhELEcD2BoJNqG6ZIKdwl0R4Ay58Ah6SwQuB8RxMOqv8rnJ0WtAKCHG--LHhZeRY3R7TLRDTiVpxOeH1LWI9VutlrF1',
+                ),
+                fit: BoxFit.cover,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              color: const Color(0xFF232310),
+            ),
+          ),
+
+          // Input Fields
+          const InputField(label: 'Name', hint: 'Enter your name'),
+          const InputField(label: 'Phone Number', hint: 'Enter your phone number'),
+          const InputField(label: 'Password', hint: 'Enter your password', obscureText: true),
+
+          // Radio buttons
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF494922),
+                borderRadius: BorderRadius.circular(50),
+              ),
+              child: const RoleSelector(),
+            ),
+          ),
+
+          const Spacer(),
+
+          // Create Button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFEEEE0B),
+                  foregroundColor: const Color(0xFF232310),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(50),
+                  ),
+                ),
+                onPressed: () {},
+                child: const Text(
+                  'Create Account',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          Container(height: 20, color: const Color(0xFF232310)),
+        ],
+      ),
+    );
+  }
+}
+
+class InputField extends StatelessWidget {
+  final String label;
+  final String hint;
+  final bool obscureText;
+
+  const InputField({
+    super.key,
+    required this.label,
+    required this.hint,
+    this.obscureText = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          TextField(
+            obscureText: obscureText,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: const TextStyle(color: Color(0xFFcbcb90)),
+              filled: true,
+              fillColor: const Color(0xFF494922),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class RoleSelector extends StatefulWidget {
+  const RoleSelector({super.key});
+
+  @override
+  State<RoleSelector> createState() => _RoleSelectorState();
+}
+
+class _RoleSelectorState extends State<RoleSelector> {
+  String _selectedRole = 'Passenger';
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: ['Passenger', 'Driver'].map((role) {
+        final selected = _selectedRole == role;
+        return Expanded(
+          child: GestureDetector(
+            onTap: () => setState(() => _selectedRole = role),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: selected ? const Color(0xFF232310) : Colors.transparent,
+                borderRadius: BorderRadius.circular(50),
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                        )
+                      ]
+                    : [],
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                role,
+                style: TextStyle(
+                  color: selected ? Colors.white : const Color(0xFFcbcb90),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}

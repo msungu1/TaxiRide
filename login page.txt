@@ -1,0 +1,197 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+void main() {
+  runApp(const StitchLoginApp());
+}
+
+class StitchLoginApp extends StatelessWidget {
+  const StitchLoginApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Stitch Design',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF1f1f14),
+        textTheme: GoogleFonts.spaceGroteskTextTheme(ThemeData.dark().textTheme).apply(
+          bodyColor: Colors.white,
+          displayColor: Colors.white,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF40402b),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          hintStyle: const TextStyle(color: Color(0xFFbebe9d)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        ),
+      ),
+      home: const LoginScreen(),
+    );
+  }
+}
+
+class LoginScreen extends StatelessWidget {
+  const LoginScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Top bar with question icon
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Container(
+                    height: 48,
+                    width: 48,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.transparent,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.help_outline, color: Colors.white),
+                      onPressed: () {},
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Welcome Text
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                'Welcome Back!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            // Phone Number Field
+            const InputField(
+              label: 'Phone Number',
+              hint: 'Enter your phone number',
+              obscureText: false,
+            ),
+
+            // Password Field
+            const InputField(
+              label: 'Password',
+              hint: 'Enter your password',
+              obscureText: true,
+            ),
+
+            const Spacer(),
+
+            // Login Button
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF3F3DC),
+                    foregroundColor: const Color(0xFF1f1f14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(50),
+                    ),
+                  ),
+                  onPressed: () {},
+                  child: const Text(
+                    'Login',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.15,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Forgot Password and Sign Up
+            TextButton(
+              onPressed: () {},
+              child: const Text(
+                'Forgot Password?',
+                style: TextStyle(
+                  color: Color(0xFFbebe9d),
+                  fontSize: 14,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {},
+              child: const Text(
+                'Sign Up',
+                style: TextStyle(
+                  color: Color(0xFFbebe9d),
+                  fontSize: 14,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class InputField extends StatelessWidget {
+  final String label;
+  final String hint;
+  final bool obscureText;
+
+  const InputField({
+    super.key,
+    required this.label,
+    required this.hint,
+    required this.obscureText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.notoSans(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            obscureText: obscureText,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(hintText: hint),
+          ),
+        ],
+      ),
+    );
+  }
+}

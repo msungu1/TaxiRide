@@ -1,0 +1,7 @@
+package com.example.sizemore_taxi
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity(){
+
+}
