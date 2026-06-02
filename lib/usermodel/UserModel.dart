@@ -7,8 +7,9 @@ class UserModel {
   final String? photoUrl;
   final bool isBlocked;
   final String? nationalId;
-
-  // Driver-specific fields
+  final bool isOnline;
+  final Map<String, dynamic>? currentLocation;
+  final bool isRiding;
   final String? carModel;
   final String? carNumber;
   final String? carType;
@@ -23,8 +24,11 @@ class UserModel {
     required this.phone,
     required this.role,
     this.photoUrl,
-    required this.isBlocked,
+    this.isBlocked = false,
     this.nationalId,
+    this.isOnline = false,
+    this.isRiding = false,
+    this.currentLocation,
     this.carModel,
     this.carNumber,
     this.carType,
@@ -33,45 +37,47 @@ class UserModel {
     this.updatedAt,
   });
 
+  // --- HELPER GETTERS FOR GOOGLE MAPS ---
+  // These ensure that 'lat' and 'lng' are always doubles even if the backend
+  // sends them as ints, preventing type cast errors in Flutter.
+  double? get lat {
+    if (currentLocation == null || currentLocation!['lat'] == null) return null;
+    return (currentLocation!['lat'] as num).toDouble();
+  }
+
+  double? get lng {
+    if (currentLocation == null || currentLocation!['lng'] == null) return null;
+    return (currentLocation!['lng'] as num).toDouble();
+  }
+
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
-      id: json['_id'] ?? json['id'] ?? '',
+      id: json['_id']?.toString() ?? json['id']?.toString() ?? '',
       name: json['name'] ?? '',
       email: json['email'] ?? '',
       phone: json['phone'] ?? '',
       role: json['role'] ?? 'user',
       photoUrl: json['photoUrl'],
       isBlocked: json['isBlocked'] ?? false,
-      nationalId: json['nationalId'],
+      nationalId: json['nationalId']?.toString(),
       carModel: json['carModel'],
       carNumber: json['carNumber'],
       carType: json['carType'],
       licenseNumber: json['licenseNumber'],
+      isOnline: json['isOnline'] ?? false,
+      isRiding: json['isRiding'] ?? false,
+      // Handle potential nested Map structure from backend
+      currentLocation: json['currentLocation'] is Map
+          ? Map<String, dynamic>.from(json['currentLocation'])
+          : null,
       createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
+          ? DateTime.tryParse(json['createdAt'].toString())
           : null,
       updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'])
+          ? DateTime.tryParse(json['updatedAt'].toString())
           : null,
     );
   }
-
-  Map<String, dynamic> toJson() => {
-    '_id': id,
-    'name': name,
-    'email': email,
-    'phone': phone,
-    'role': role,
-    if (photoUrl != null) 'photoUrl': photoUrl,
-    'isBlocked': isBlocked,
-    if (nationalId != null) 'nationalId': nationalId,
-    if (carModel != null) 'carModel': carModel,
-    if (carNumber != null) 'carNumber': carNumber,
-    if (carType != null) 'carType': carType,
-    if (licenseNumber != null) 'licenseNumber': licenseNumber,
-    if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
-    if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
-  };
 
   UserModel copyWith({
     String? id,
@@ -82,6 +88,9 @@ class UserModel {
     String? photoUrl,
     bool? isBlocked,
     String? nationalId,
+    bool? isOnline,
+    Map<String, dynamic>? currentLocation,
+    bool? isRiding,
     String? carModel,
     String? carNumber,
     String? carType,
@@ -98,6 +107,9 @@ class UserModel {
       photoUrl: photoUrl ?? this.photoUrl,
       isBlocked: isBlocked ?? this.isBlocked,
       nationalId: nationalId ?? this.nationalId,
+      isOnline: isOnline ?? this.isOnline,
+      currentLocation: currentLocation ?? this.currentLocation,
+      isRiding: isRiding ?? this.isRiding,
       carModel: carModel ?? this.carModel,
       carNumber: carNumber ?? this.carNumber,
       carType: carType ?? this.carType,

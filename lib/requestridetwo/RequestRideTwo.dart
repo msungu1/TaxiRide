@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:sizemore_taxi/UserProvider/UserProvider.dart';
+import 'package:sizemore_taxi/waitingscreen/ride_waiting_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class RequestRideTwo extends StatefulWidget {
   final dynamic selectedOption;
@@ -43,38 +45,52 @@ class _RequestRideTwoState extends State<RequestRideTwo> {
     );
   }
 
+
   void _showSuccessDialog() {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2e2d1f),
-        title: Text(
-          "Request Sent",
-          style: GoogleFonts.spaceGrotesk(color: Colors.white),
-        ),
-        content: Text(
-          "Your ride for ${DateFormat('jm').format(widget.scheduledDate)} has been posted to drivers.",
-          style: GoogleFonts.notoSans(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.popUntil(context, (route) => route.isFirst),
-            child: const Text(
-              "GREAT",
-              style: TextStyle(color: Color(0xFFEEDB0B)),
-            ),
+      builder: (context) {
+        // Auto-close after 3 seconds
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) Navigator.pop(context);
+        });
+
+        return AlertDialog(
+          backgroundColor: const Color(0xFF2e2d1f),
+          title: Text("Request Sent", style: GoogleFonts.spaceGrotesk(color: Colors.white)),
+          content: Text(
+            "Your ride has been posted to drivers. We'll notify you when one accepts.",
+            style: GoogleFonts.notoSans(color: Colors.white70),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // just close dialog
+              },
+              child: const Text("OK", style: TextStyle(color: Color(0xFFEEDB0B))),
+            ),
+          ],
+        );
+      },
     );
   }
 
-  /// 🚀 Final API call with Latest Logic & Dynamic Vehicle Type
+
   Future<void> _handleConfirmTrip(BuildContext context) async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
+    // 🚀 1. FALLBACK CHECK: If Provider is empty, check SharedPreferences
+    String? activeToken = userProvider.token;
+    if (activeToken == null || activeToken.isEmpty) {
+      debugPrint("⚠️ Provider token empty, checking SharedPreferences...");
+      final prefs = await SharedPreferences.getInstance();
+      activeToken = prefs.getString('token');
+    }
 
+    if (activeToken == null || activeToken.isEmpty) {
+      _showErrorSnackBar("Session expired. Please log in again.");
+      return;
+    }
     final scheduledDateTime = DateTime(
       widget.scheduledDate.year,
       widget.scheduledDate.month,
@@ -83,48 +99,69 @@ class _RequestRideTwoState extends State<RequestRideTwo> {
       widget.scheduledTime.minute,
     );
 
+    final now = DateTime.now();
+    if (scheduledDateTime.isBefore(now.add(const Duration(minutes: 30)))) {
+      _showErrorSnackBar("Rides must be scheduled at least 30 minutes in advance.");
+      return;
+    }
+
     setState(() => _isSubmitting = true);
 
     try {
-      final url = Uri.parse(
-        'https://sizemoretaxi.onrender.com/api/trips/request',
-      );
+      final url = Uri.parse('https://sizemoretaxi-itpj.onrender.com/api/trips/confirm');
+
+      // ✅ FIX: Cleaned up the JSON structure and matching backend keys
+      final Map<String, dynamic> requestBody = {
+        "riderId": userProvider.id,
+        "pickup": {
+          "lat": widget.pickupLatLng.latitude,
+          "lng": widget.pickupLatLng.longitude,
+          "address": widget.pickupAddress,
+        },
+        "dropoff": {
+          "lat": widget.dropoffLatLng.latitude,
+          "lng": widget.dropoffLatLng.longitude,
+          "address": widget.dropoffAddress,
+        },
+        "vehicleType": widget.selectedOption.id,
+        "scheduledTime": scheduledDateTime.toIso8601String(),
+      };
 
       final response = await http.post(
         url,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          // 'Authorization': 'Bearer ${userProvider.token}',
+          'Authorization': 'Bearer $activeToken', // Using the validated token
         },
-        body: jsonEncode({
-          "riderId": userProvider.id,
-          "pickupLocation": {
-            "lat": widget.pickupLatLng.latitude,
-            "lng": widget.pickupLatLng.longitude,
-          },
-          "dropoffLocation": {
-            "lat": widget.dropoffLatLng.latitude,
-            "lng": widget.dropoffLatLng.longitude,
-          },
-          // ✅ Logic Fix: Getting vehicle type dynamically from the selected option
-          "vehicleType": widget.selectedOption.id,
-          "scheduledTime": scheduledDateTime.toIso8601String(),
-        }),
+
+        body: jsonEncode(requestBody),
       );
 
-      // Latest Logic: Content-type validation to prevent HTML/500 error crashes
-      if (response.headers['content-type']?.contains('application/json') ??
-          false) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         final result = jsonDecode(response.body);
 
-        if (response.statusCode == 200 || response.statusCode == 201) {
+        // ✅ FIX: Accessing the ID from your backend's response structure
+        // Your backend returns { message: "...", trip: newTrip }
+        final tripId = result['trip']?['_id'];
+
+        if (tripId == null) {
+          throw Exception("Server confirmed trip but returned no ID.");
+        }
+
+        if (mounted) {
           _showSuccessDialog();
-        } else {
-          throw result['message'] ?? "Server error: ${response.statusCode}";
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => RideWaitingScreen(tripId: tripId),
+            ),
+          );
         }
       } else {
-        debugPrint("Server returned non-JSON: ${response.body}");
-        throw "Server is currently unavailable. Please try again later.";
+        final errorBody = jsonDecode(response.body);
+        throw errorBody['message'] ?? "Error ${response.statusCode}";
       }
     } catch (e) {
       _showErrorSnackBar("Error: $e");
@@ -132,7 +169,6 @@ class _RequestRideTwoState extends State<RequestRideTwo> {
       if (mounted) setState(() => _isSubmitting = false);
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final userProvider = Provider.of<UserProvider>(context);

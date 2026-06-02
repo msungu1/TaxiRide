@@ -4,6 +4,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart'; // Add this line
+import 'dart:io'; // for File
+import 'package:image_picker/image_picker.dart';
 
 class RegistrationScreen extends StatelessWidget {
   const RegistrationScreen({super.key});
@@ -22,6 +24,12 @@ class CreateAccountScreen extends StatefulWidget {
 }
 
 class _CreateAccountScreenState extends State<CreateAccountScreen> {
+  File? driverImage;
+  File? licenseImage;
+
+  String? selectedCarType; // will be 'Comfort', 'Premium' or 'Business'
+
+  final ImagePicker _picker = ImagePicker();
   final _formKey = GlobalKey<FormState>();
   String selectedRole = 'Passenger';
   bool isLoading = false;
@@ -60,17 +68,17 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
         "nationalId": nationalIdController.text.trim(),
         "carModel": carModelController.text.trim(),
         "carNumber": carNumberController.text.trim(),
-        "carType": carTypeController.text.trim(),
-        "licenseNumber": licenseController.text.trim(),
+        "carType": selectedCarType ?? "",                   // ← use the dropdown value        "licenseNumber": licenseController.text.trim(),
       });
     }
+
     return body;
   }
 
 // 1. Simplified Single API Call
 // 1. Single API Call that waits for Render to wake up
   Future<void> _makeSingleApiCall(Map<String, dynamic> body) async {
-    final url = Uri.parse("https://sizemoretaxi.onrender.com/api/auth/register");
+    final url = Uri.parse("https://sizemoretaxi-itpj.onrender.com/api/auth/register");
 
     // Create a persistent client to prevent connection drops during Render spin-up
     final client = http.Client();
@@ -127,6 +135,19 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
     if (passwordController.text != confirmPasswordController.text) {
       showMessage("Passwords don't match");
       return;
+    }if (selectedRole == 'Driver') {
+      if (driverImage == null) {
+        showMessage("Please upload driver photo");
+        return;
+      }
+      if (licenseImage == null) {
+        showMessage("Please upload driving license photo");
+        return;
+      }
+      if (selectedCarType == null) {
+        showMessage("Please select car type");
+        return;
+      }
     }
 
     setState(() => isLoading = true);
@@ -145,6 +166,81 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
       if (mounted) {
         setState(() => isLoading = false);
       }
+    }
+  }
+
+  Future<void> _pickDriverImage() async {
+    try {
+      final XFile? pickedFile = await showModalBottomSheet<XFile?>(
+        context: context,
+        builder: (context) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Take Photo'),
+              onTap: () async {
+                final file = await _picker.pickImage(source: ImageSource.camera);
+                Navigator.pop(context, file);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from Gallery'),
+              onTap: () async {
+                final file = await _picker.pickImage(source: ImageSource.gallery);
+                Navigator.pop(context, file);
+              },
+            ),
+          ],
+        ),
+      );
+
+      if (pickedFile != null) {
+        setState(() {
+          driverImage = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      showMessage("Error picking driver image: $e", Colors.orange);
+    }
+  }
+
+  Future<void> _pickLicenseImage() async {
+    // Same logic as above, just for license
+    try {
+      final XFile? pickedFile = await showModalBottomSheet<XFile?>(
+        context: context,
+        builder: (context) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Take Photo'),
+              onTap: () async {
+                final file = await _picker.pickImage(source: ImageSource.camera);
+                Navigator.pop(context, file);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from Gallery'),
+              onTap: () async {
+                final file = await _picker.pickImage(source: ImageSource.gallery);
+                Navigator.pop(context, file);
+              },
+            ),
+          ],
+        ),
+      );
+
+      if (pickedFile != null) {
+        setState(() {
+          licenseImage = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      showMessage("Error picking license image: $e", Colors.orange);
     }
   }
 
@@ -184,20 +280,58 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
 
                 const SizedBox(height: 30),
 
-                // Logo with a subtle glow
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: primaryCyan.withOpacity(0.2),
-                        blurRadius: 40,
-                        spreadRadius: 5,
-                      )
-                    ],
-                  ),
-                  child: Image.asset('assets/images/logo.png', height: 90),
-                ),
+Column(
+  children: [
+    Container(
+      height: 120,
+      width: 120,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFF008080),
+        border: Border.all(
+          color: primaryCyan.withOpacity(0.3),
+          width: 1.5,
+
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF008080).withOpacity(0.3),
+          blurRadius: 30,
+            spreadRadius: 2,
+          ),
+        ],
+
+
+
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(60),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Image.asset(
+            'assets/images/logo.png',
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => const Icon(
+              Icons.local_taxi_rounded,
+              size:50,
+              color: primaryCyan,
+            ),
+          ),
+        ),
+      ),
+    ),
+const SizedBox(height: 15),
+    Text(
+      'SIZEMORETAXI',
+      style: GoogleFonts.montserrat(
+        color: Colors.white,
+        fontSize: 22,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 4.0,
+      ),
+    ),
+  ],
+),
 
                 const SizedBox(height: 30),
 
@@ -213,6 +347,7 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                 ),
 
                 const SizedBox(height: 10),
+
 
                 // Form Input Fields
                 Padding(
@@ -231,9 +366,171 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                       if (selectedRole == 'Driver') ...[
                         inputField("Car Model", carModelController, icon: Icons.directions_car_filled_outlined),
                         inputField("Car Number", carNumberController, icon: Icons.numbers_outlined),
-                        inputField("Car Type", carTypeController, icon: Icons.category_outlined),
+                        // inputField("Car Type", carTypeController, icon: Icons.category_outlined),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "  Car Type",
+                                style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 6),
+                              DropdownButtonFormField<String>(
+                                value: selectedCarType,
+                                hint: Text(
+                                  "Select car type",
+                                  style: TextStyle(color: Colors.white.withOpacity(0.4)),
+                                ),
+                                dropdownColor: const Color(0xFF1E293B),
+                                style: const TextStyle(color: Colors.white),
+                                decoration: InputDecoration(
+                                  prefixIcon: Icon(Icons.category_outlined, color: const Color(0xFF22D3EE).withOpacity(0.5), size: 20),
+                                  filled: true,
+                                  fillColor: const Color(0xFF1E293B),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: const BorderSide(color: Colors.white10),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: const BorderSide(color: Color(0xFF22D3EE), width: 1.5),
+                                  ),
+                                ),
+                                items: ['Comfort', 'Premium', 'Business'].map((type) {
+                                  return DropdownMenuItem<String>(
+                                    value: type,
+                                    child: Text(type),
+                                  );
+                                }).toList(),
+                                onChanged: (value) {
+                                  setState(() {
+                                    selectedCarType = value;
+                                  });
+                                },
+                                validator: (value) {
+                                  if (value == null) return 'Please select car type';
+                                  return null;
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+
+
                         inputField("License Number", licenseController, icon: Icons.badge_outlined),
+
+
                       ],
+
+                      if (selectedRole == 'Driver') ...[
+                        // ... car model, number, type, license number
+
+                        const SizedBox(height: 16),
+
+                        // Driver Photo
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "  Driver Photo",
+                                style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 8),
+                              GestureDetector(
+                                onTap: _pickDriverImage,
+                                child: Container(
+                                  height: 140,
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1E293B),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: Colors.white10),
+                                  ),
+                                  child: driverImage == null
+                                      ? Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.add_a_photo, color: const Color(0xFF22D3EE), size: 40),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        "Tap to take/upload driver photo",
+                                        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
+                                      ),
+                                    ],
+                                  )
+                                      : ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Image.file(
+                                      driverImage!,
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      height: 140,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // License Photo – same style
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "  Driving License Photo",
+                                style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 8),
+                              GestureDetector(
+                                onTap: _pickLicenseImage,
+                                child: Container(
+                                  height: 140,
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1E293B),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: Colors.white10),
+                                  ),
+                                  child: licenseImage == null
+                                      ? Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.card_membership, color: const Color(0xFF22D3EE), size: 40),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        "Tap to take/upload license photo",
+                                        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
+                                      ),
+                                    ],
+                                  )
+                                      : ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Image.file(
+                                      licenseImage!,
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      height: 140,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+                      ],
+
 
                       inputField(
                         "National ID",
@@ -437,13 +734,17 @@ class RoleSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        // color: const Color(0xFF494A22),
-        color: const Color(0xFFFFD700), //////////////////////////
+    const primaryCyan = Color(0xFF22D3EE);
 
-        borderRadius: BorderRadius.circular(50),
+    return Container(
+      height: 55,
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B), // Dark Slate
+        // color: const Color(0xFF494A22),
+
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Row(
         children: ['Passenger', 'Driver'].map((role) {
@@ -451,25 +752,34 @@ class RoleSelector extends StatelessWidget {
           return Expanded(
             child: GestureDetector(
               onTap: () => onRoleChanged(role),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                // padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  color: isSelected
-                      ? const Color(0xFF232310)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(50),
+                  color: isSelected ? primaryCyan : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: isSelected ? [
+                    BoxShadow(
+                      color: primaryCyan.withOpacity(0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    )
+                  ] : [],
                 ),
                 alignment: Alignment.center,
                 child: Text(
-                  role,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : const Color(0xFFcbcb90),
+                  role.toUpperCase(),
+                  style: GoogleFonts.inter(
+                    color: isSelected ? Colors.white : const Color(0xFF0F172A),
                     fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    height: 2,
+                    fontWeight: FontWeight.bold,
+                    height: 1.1,
                   ),
                 ),
               ),
+
+
             ),
           );
         }).toList(),

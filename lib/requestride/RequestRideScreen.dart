@@ -9,11 +9,16 @@ import 'package:google_places_flutter/google_places_flutter.dart';
 import 'package:google_places_flutter/model/prediction.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:sizemore_taxi/PassengerRideDetailScreen/PassengerRideDetailScreen.dart';
 
 // ✅ Internal Imports (Ensure paths match your project structure)
 import 'package:sizemore_taxi/UserProvider/UserProvider.dart';
 import 'package:sizemore_taxi/env_helper.dart';
 import 'package:sizemore_taxi/requestridetwo/RequestRideTwo.dart'; // Import your second screen
+import 'package:sizemore_taxi/ridedetail/RideDetailsScreen.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:sizemore_taxi/sockets/sockets_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LatLng {
   final double latitude;
@@ -67,20 +72,50 @@ class _RequestRideScreenState extends State<RequestRideScreen> {
 
   List<RideOption> _rideOptions = [];
 
+  bool _isSearching = false; // ✅ ADD THIS to fix the undefined error
+  StreamSubscription? _rideSubscription;
   @override
   void initState() {
     super.initState();
     _updateDateTime();
     Timer.periodic(const Duration(seconds: 1), (_) => _updateDateTime());
     _getCurrentLocation();
-  }
 
+    // ✅ LISTEN TO SOCKET FOR THE "LINK"
+    _rideSubscription = SocketService.instance.rideUpdates.listen((data) {
+      if (mounted) {
+        // If we get driver info or a trip ID, it means the driver is linked
+        if (data.containsKey('driverName') || data['tripId'] != null) {
+          final String? tripId = data['tripId'];
+          // ✅ JOIN ROOM HERE
+          if (tripId != null) {
+            // ✅ JOIN ROOM SAFELY
+            SocketService.instance.joinTripRoom(tripId);
+          }
+          setState(() {
+            _isSearching = false; // ✅ STOPS THE LOADING BAR
+          });
+
+          // Navigate to the Live Tracking Screen
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PassengerRideDetailScreen(rideData: data), // Ensure this exists
+            ),
+          );
+        }
+      }
+    });
+  }
   @override
   void dispose() {
-    fromController.dispose();
-    toController.dispose();
+    _rideSubscription?.cancel(); // Stop listening when screen is closed
     super.dispose();
   }
+  @override
+
+  @override
+
 
   void _updateDateTime() {
     final now = DateTime.now();
@@ -147,9 +182,15 @@ class _RequestRideScreenState extends State<RequestRideScreen> {
     try {
       final userProvider = Provider.of<UserProvider>(context, listen: false);
 
+      // ✅ 1. Get the token from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final String? token = prefs.getString('token');
+
       final response = await http.post(
-        Uri.parse('https://sizemoretaxi.onrender.com/api/trips/options'),
-        headers: {'Content-Type': 'application/json'},
+        Uri.parse('https://sizemoretaxi-itpj.onrender.com/api/trips/options'),
+        headers: {'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $token', // ✅ 2. ADD THIS LINE
+        },
         body: jsonEncode({
           "riderId": userProvider.id, // ✅ Real ID
           "pickupLocation": fromLatLng!.toJson(),
@@ -160,32 +201,83 @@ class _RequestRideScreenState extends State<RequestRideScreen> {
 
       if (response.statusCode == 200) {
         final jsonResponse = jsonDecode(response.body);
-        final vehicles = jsonResponse['data']['vehicles'] as List;
+        final vehicles = jsonResponse['data']['vehicles'] as List<dynamic>;
 
         setState(() {
-          _rideOptions = vehicles.map((v) {
-            final type = v['type'];
+          // First map to RideOption with correct titles & icons
+          List<RideOption> mappedOptions = vehicles.map((v) {
+            final type = v['type'] as String;
+
+            String title;
+            String imagePath;
+            bool isPopular = false;
+            bool eco = true;
+
+            switch (type) {
+              case "Comfort":
+                title = "Comfort";
+                imagePath = 'assets/icons/comfort.png';
+                isPopular = true; // as you had
+                break;
+              case "bussines":
+                title = "Business";
+                imagePath = 'assets/icons/sedan.png';
+                break;
+              case "Premium":
+                title = "Premium";
+                imagePath = 'assets/icons/premium-service.png';
+                break;
+              case "Chopper":
+                title = "Chopper";
+                imagePath = 'assets/icons/chopper.png';
+                eco = false; // as you had (only chopper non-eco)
+                break;
+              default:
+                title = type; // fallback
+                imagePath = 'assets/images/icons/default.png'; // add a default if needed
+            }
+
             return RideOption(
               id: type,
-              title: type == "Car" ? "Sedan" : type == "Bike" ? "Chopper" : "Neta EV",
-              imagePath: type == "Car" ? 'assets/images/sedan.png' : type == "Bike" ? 'assets/images/chopper.jpeg' : 'assets/images/neta.png',
+              title: title,
+              imagePath: imagePath,
               time: "${v['durationMin']} min away",
               price: "KES ${v['total']}",
-              isPopular: type == "Car",
-              eco: type != "Bike",
+              isPopular: isPopular,
+              eco: eco,
             );
           }).toList();
+
+          // Now sort to enforce your desired order: Comfort → Business → Premium → Chopper
+          const order = ['Comfort', 'Business', 'Premium', 'Chopper'];
+          mappedOptions.sort((a, b) {
+            final indexA = order.indexOf(a.title);
+            final indexB = order.indexOf(b.title);
+            return indexA.compareTo(indexB);
+          });
+
+          _rideOptions = mappedOptions;
+
           _isCalculating = false;
           _showRideOptions = true;
         });
+
+
+
+
+
       } else {
         throw Exception("Failed to fetch ride options");
       }
+
+
     } catch (e) {
       setState(() => _isCalculating = false);
       _showMessage("Error: $e");
     }
   }
+
+
 
   void _showMessage(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -374,7 +466,18 @@ class _RequestRideScreenState extends State<RequestRideScreen> {
     );
   }
 
-  Widget _rideOption({required String imagePath, required String title, required String time, required String price, bool isPopular = false, bool eco = false}) {
+
+  Widget _rideOption({
+    required String imagePath,
+    required String title,
+    required String time,
+    required String price,
+    bool isPopular = false,
+    bool eco = false,
+  }) {
+    // Define the unified theme color
+    const Color brandYellow = Color(0xFFFFD60A);
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       child: Container(
@@ -382,19 +485,64 @@ class _RequestRideScreenState extends State<RequestRideScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: isPopular ? const Color(0xFFFFD60A) : Colors.transparent),
+          border: Border.all(
+            color: isPopular ? brandYellow.withOpacity(0.5) : Colors.white10,
+          ),
         ),
         child: Row(
           children: [
-            Image.asset(imagePath, width: 60),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(title, style: GoogleFonts.manrope(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                Text(time, style: const TextStyle(color: Colors.white54)),
-              ]),
+            // Styled Icon Container
+            Container(
+              height: 60,
+              width: 60,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: brandYellow.withOpacity(0.05), // Very subtle yellow glow
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Image.asset(
+                imagePath,
+                // THIS TINTS THE PNG TO ONE COLOR
+                color: brandYellow,
+                colorBlendMode: BlendMode.modulate,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) =>
+                const Icon(Icons.car_rental, color: brandYellow),
+              ),
             ),
-            Text(price, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(width: 16),
+
+            // Details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                      title,
+                      style: GoogleFonts.manrope(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold
+                      )
+                  ),
+                  Text(
+                      time,
+                      style: const TextStyle(color: Colors.white54, fontSize: 14)
+                  ),
+                ],
+              ),
+            ),
+
+            // Price
+            Text(
+                price,
+                style: GoogleFonts.manrope(
+                    color: brandYellow,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800
+                )
+            ),
+
           ],
         ),
       ),

@@ -4,10 +4,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-// ✅ Screen Imports
 import 'package:sizemore_taxi/userdetails/UserDetailsScreen.dart';
 import 'UserProvider/UserProvider.dart';
+import 'driverRequest/DriverAvailableTripsScreen.dart';
 import 'login_screen/LoginScreen.dart';
 import 'registration_Screen/RegistrationScreen.dart';
 import 'ProfileScreen/ProfileScreen.dart';
@@ -31,13 +30,14 @@ import 'FeedbackScreen/FeedbackScreen.dart';
 import 'help/HelpSupportScreen.dart';
 import 'privacy/PrivacyPolicyScreen.dart';
 import 'Onetime2/OnetimetwoScreen.dart';
-import 'env_helper.dart';
-
+// import 'env_helper.dart';
 // ✅ Socket Import
 import 'package:sizemore_taxi/sockets/sockets_service.dart';
-
+// import 'package:sizemore_taxi/driverRequest/DriverAvailableTripsScreen.dart';
+//
 // 1. GLOBAL NAVIGATOR KEY - Essential for showing popups from outside widgets
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 
 class MyHttpOverrides extends HttpOverrides {
   @override
@@ -47,6 +47,29 @@ class MyHttpOverrides extends HttpOverrides {
           (X509Certificate cert, String host, int port) => true;
   }
 }
+
+// ✅ PUT IT HERE
+class ThemeNotifier extends ChangeNotifier {
+  bool _isDarkMode;
+
+  ThemeNotifier(this._isDarkMode);
+
+  bool get isDarkMode => _isDarkMode;
+
+  ThemeMode get currentTheme =>
+      _isDarkMode ? ThemeMode.dark : ThemeMode.light;
+
+  void toggleTheme(bool isDark) async {
+    _isDarkMode = isDark;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('darkMode', isDark);
+
+    notifyListeners();
+  }
+}
+
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,17 +89,38 @@ void main() async {
           'API_URL': 'https://maps.googleapis.com/maps/api/distancematrix/json',
         },
       );
+      debugPrint("✅ Web: dotenv merged with hardcoded values");
     } else {
       await dotenv.load(fileName: "assets/.env");
+      debugPrint("✅ Desktop/Mobile: .env loaded from assets");
     }
   } catch (e) {
     debugPrint("⚠️ .env load error: $e");
+    // Fallback: reload with hardcoded values (using mergeWith inside load)
+    await dotenv.load(
+      mergeWith: {
+        'GOOGLE_MAPS_KEY': 'AIzaSyDraWkg1uWEzstuOOIsWWedooG6Xq-RctM',
+        'API_URL': 'https://maps.googleapis.com/maps/api/distancematrix/json',
+      },
+    );
+    debugPrint("Fallback: hardcoded values merged");
   }
+  // runApp(
+  //   ChangeNotifierProvider(create: (_) => UserProvider(), child: const MyApp()),
+  // );
 
   runApp(
-    ChangeNotifierProvider(create: (_) => UserProvider(), child: const MyApp()),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+        // Add the ThemeNotifier here to fix the red error screen
+        ChangeNotifierProvider(create: (_) => ThemeNotifier(true)),      ],
+      child: const MyApp(),
+    ),
   );
 }
+
+
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -162,6 +206,7 @@ class _MyAppState extends State<MyApp> {
           final user = args['user'] as UserModel;
           return UserDetailsScreen(user: user);
         },
+        '/marketplace': (context) => const DriverAvailableTripsScreen(),
       },
     );
   }

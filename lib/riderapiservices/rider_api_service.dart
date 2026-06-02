@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizemore_taxi/usermodel/UserModel.dart';
 
 class RiderApiService {
-  static const String baseUrl = 'https://sizemoretaxi.onrender.com';
+  static const String baseUrl = "https://sizemoretaxi-itpj.onrender.com/api";
   static const String _tokenKey = 'riderToken';
   static const Duration _timeout = Duration(seconds: 15);
 

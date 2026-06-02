@@ -6,13 +6,13 @@ class UserProvider with ChangeNotifier {
   String? _email;
   String? _phone;
   String? _role;
-
+  String? _token; // ✅ Added token field
   String? get id => _id;
   String? get name => _name;
   String? get email => _email;
   String? get phone => _phone;
   String? get role => _role;
-
+  String? get token => _token; // ✅ Added getter for the token
   void setUser(Map<String, dynamic> userData) {
     _id = userData['id'];
     _name = userData['name'];
@@ -29,5 +29,6 @@ class UserProvider with ChangeNotifier {
     _phone = null;
     _role = null;
     notifyListeners();
+    _token = null; // ✅ Clear token on logout
   }
 }

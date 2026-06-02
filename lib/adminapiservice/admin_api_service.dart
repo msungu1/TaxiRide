@@ -6,9 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizemore_taxi/usermodel/UserModel.dart';
 import 'package:sizemore_taxi/reportmodel/ReportModel.dart';
 import 'package:sizemore_taxi/feedbackmodel/FeedbackModel.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Ensure this is imported
 
 class AdminApiService {
-  static const String baseUrl = 'https://sizemoretaxi.onrender.com';
+
+  static const String baseUrl = 'https://sizemoretaxi-itpj.onrender.com';
   static const String _tokenKey = 'adminToken';
   static const Duration _timeout = Duration(seconds: 15);
 
@@ -21,65 +23,91 @@ class AdminApiService {
 
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(_tokenKey);
-    print('🔐 Retrieved token: $token');
-    return token;
+    return prefs.getString(_tokenKey);
   }
 
   static Future<void> clearToken() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
-    print('🧹 Token cleared');
   }
 
-  // --- Secure Request Helper ---
-  static Future<http.Response> _securedRequest({
-    required String method,
-    required String path,
-    dynamic body,
-  }) async {
-    final token = await getToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('Authentication required');
-    }
 
-    final uri = Uri.parse('$baseUrl/api/admin/$path');
-    final headers = {
-      'Authorization': 'Bearer $token',
-      if (body != null) 'Content-Type': 'application/json',
-    };
+  static Future<List<UserModel>> getAvailableDrivers(String tripId) async {
+    // We use _securedRequest because it already handles the Token and the /api/trips/ path
+    final response = await _securedRequest(
+      method: 'GET', // Matches your backend router.post
+      path: 'available?tripId=$tripId',
+    );
 
-    try {
-      print('📡 Sending $method request to $uri');
-      final response = await switch (method.toLowerCase()) {
-        'get' => http.get(uri, headers: headers),
-        'post' => http.post(uri, headers: headers, body: jsonEncode(body)),
-        'put' => http.put(uri, headers: headers, body: jsonEncode(body)),
-        'delete' => http.delete(uri, headers: headers),
-        _ => throw Exception('Invalid HTTP method'),
-      }.timeout(_timeout);
-
-      print('✅ Response ${response.statusCode}: ${response.body}');
-
-      if (response.statusCode == 401) {
-        await clearToken();
-        throw Exception('Session expired. Please login again');
-      }
-
-      return response;
-    } on TimeoutException {
-      throw Exception('Request timeout');
-    } on SocketException {
-      throw Exception('No internet connection');
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      // Access the 'data' field from your backend response
+      final List list = decoded['data'] ?? [];
+      return list.map((item) => UserModel.fromJson(item)).toList();
+    } else {
+      throw _handleError(response);
     }
   }
 
-  // --- User Management ---
+  static Future<List<dynamic>> fetchAllTrips({String? status}) async {
+    // final path = status != null ? 'trips?status=$status' : 'trips';
+    final path = status != null ? 'all?status=$status' : 'all';
+    final response = await _securedRequest(method: 'GET', path: path);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      // FIX: Matches your log key: "trips"
+      // return data['trips'] ?? data['data'] ?? [];
+      return data['data'] ?? [];
+    } else {
+      throw _handleError(response);
+    }
+  }
+
+  static Future<void> assignTrip(String tripId, String driverId) async {
+    final response = await _securedRequest(
+      method: 'POST',
+      path: 'assign',
+      body: {'tripId': tripId, 'driverId': driverId},
+    );
+    if (response.statusCode != 200) throw _handleError(response);
+  }
+
+  static Future<void> cancelTrip(String tripId, String reason) async {
+    final response = await _securedRequest(
+      method: 'POST',
+      path: 'cancel',
+      body: {'tripId': tripId, 'reason': reason},
+    );
+    if (response.statusCode != 200) throw _handleError(response);
+  }
+  // In AdminApiService
+  // static Future<void> acceptTrip(String tripId) async {
+  //   final response = await http.post(
+  //     Uri.parse('$baseUrl/api/trips/accept'),
+  //     headers: {'Content-Type': 'application/json'},
+  //     body: jsonEncode({'tripId': tripId}),
+  //   );
+  //   if (response.statusCode != 200) throw Exception("Failed to accept trip");
+  // }
+
+  static Future<void> acceptTrip(String tripId) async {
+    final response = await _securedRequest(
+      method: 'POST',
+      path: 'accept',  // hits /api/trips/accept
+      body: {'tripId': tripId},
+    );
+    if (response.statusCode != 200) throw _handleError(response);
+  }
+  // --- User Management (Restored & Fixed) ---
   static Future<List<UserModel>> fetchAllUsers() async {
-    final response = await _securedRequest(method: 'GET', path: 'users');
+    final response = await _securedRequest(method: 'GET',
+        path: 'users');
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return (data['users'] as List).map((e) => UserModel.fromJson(e)).toList();
+      // FIX: Matches your log key: "users"
+      final List userList = data['users'] ?? data['data'] ?? [];
+      return userList.map((e) => UserModel.fromJson(e)).toList();
     } else {
       throw _handleError(response);
     }
@@ -105,68 +133,133 @@ class AdminApiService {
     if (response.statusCode != 200) throw _handleError(response);
   }
 
-  // --- Reports ---
+  static Future<void> blockUser(String userId) async => toggleUserStatus(userId, true);
+  static Future<void> unblockUser(String userId) async => toggleUserStatus(userId, false);
+
+  // --- Feedback & Reports ---
   static Future<List<ReportModel>> fetchReports() async {
     final response = await _securedRequest(method: 'GET', path: 'reports');
     if (response.statusCode == 200) {
-      return (jsonDecode(response.body) as List)
-          .map((e) => ReportModel.fromJson(e))
-          .toList();
+      final data = jsonDecode(response.body);
+      final List list = data is List ? data : (data['data'] ?? data['reports'] ?? []);
+      return list.map((e) => ReportModel.fromJson(e)).toList();
     } else {
       throw _handleError(response);
     }
   }
 
-  // --- Feedback ---
   static Future<List<FeedbackModel>> fetchFeedback() async {
     final response = await _securedRequest(method: 'GET', path: 'feedback');
     if (response.statusCode == 200) {
-      return (jsonDecode(response.body) as List)
-          .map((f) => FeedbackModel.fromJson(f))
-          .toList();
+      final data = jsonDecode(response.body);
+      final List list = data is List ? data : (data['data'] ?? data['feedback'] ?? []);
+      return list.map((f) => FeedbackModel.fromJson(f)).toList();
     } else {
       throw _handleError(response);
     }
   }
 
   static Future<void> markFeedbackHandled(String feedbackId) async {
-    final response = await _securedRequest(
-      method: 'PUT',
-      path: 'feedback/$feedbackId/handle',
-    );
+    final response = await _securedRequest(method: 'PUT', path: 'feedback/$feedbackId/handle');
     if (response.statusCode != 200) throw _handleError(response);
   }
 
-  // --- Error Handler ---
-  static Exception _handleError(http.Response response) {
-    switch (response.statusCode) {
-      case 401:
-        clearToken();
-        return Exception('Session expired. Please login again');
-      case 403:
-        return Exception('Permission denied');
-      case 404:
-        return Exception('Resource not found');
-      case 500:
-        return Exception('Server error: ${response.body}');
-      default:
-        return Exception('API Error ${response.statusCode}: ${response.body}');
+  // --- Stats & Active Rides ---
+  static Future<Map<String, dynamic>> fetchDashboardStats() async {
+    final response = await _securedRequest(method: 'GET', path: 'dashboard/stats');
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw _handleError(response);
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchActiveRides() async {
+    final response = await _securedRequest(method: 'GET', path: 'rides/active');
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data['rides'] ?? data['data'] ?? []);
+    } else {
+      throw _handleError(response);
     }
   }
-  static Future<void> blockUser(String userId) async {
-    final response = await _securedRequest(
-      method: 'PUT',
-      path: 'users/$userId/disable',
-    );
-    if (response.statusCode != 200) throw _handleError(response);
-  }
 
-  static Future<void> unblockUser(String userId) async {
-    final response = await _securedRequest(
-      method: 'PUT',
-      path: 'users/$userId/enable',
-    );
-    if (response.statusCode != 200) throw _handleError(response);
-  }
+  static Future<http.Response> _securedRequest({
+    required String method,
+    required String path,
+    dynamic body,
+  }) async {
+    final token = await getToken();
 
+    // Switch between Admin and Trip routes automatically
+    String subPath = "/api/admin/";
+
+    // LOGIC: Ensure trip-specific endpoints use the correct sub-route
+    // if (path.contains('available') ||
+    //     path.contains('assign') ||
+    // //     path.contains('cancel')) {
+    // //   subPath = "/api/trips/";
+    // //
+    // // }
+    //     path.contains('cancel') ||
+    //     path.contains('accept') ||   // ✅ ADD
+    //     path.contains('all')) {       // ✅ ADD
+    //   subPath = "/api/trips/";
+    // }
+    if (path.contains('available') ||
+        path.contains('assign') ||
+        path.contains('cancel') ||
+        path.contains('accept') ||  // ✅ add
+        path.contains('decline') || // ✅ add
+        path.contains('all') ||     // ✅ add
+        path.contains('options') || // ✅ add
+        path.contains('confirm')) { // ✅ add
+      subPath = "/api/trips/";
+    }
+
+    if (token == null) throw Exception('Authentication required');
+
+    final uri = Uri.parse('$baseUrl$subPath$path');
+
+    // UPDATED HEADERS: Added 'Accept' for better Web/CORS compatibility
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    try {
+      print('📡 Sending $method request to $uri');
+
+      // UPDATED SWITCH: Added jsonEncode(body ?? {}) to prevent null body errors on Web
+      final response = await switch (method.toLowerCase()) {
+        'get' => http.get(uri, headers: headers),
+        'post' => http.post(uri, headers: headers, body: jsonEncode(body ?? {})),
+        'put' => http.put(uri, headers: headers, body: jsonEncode(body ?? {})),
+        'delete' => http.delete(uri, headers: headers),
+        _ => throw Exception('Invalid Method'),
+      }.timeout(_timeout);
+
+      print('✅ Response ${response.statusCode}: ${response.body}');
+
+      if (response.statusCode == 401) {
+        await clearToken();
+        throw Exception('Session expired');
+      }
+
+      return response;
+    } on SocketException {
+      throw Exception('No internet connection');
+    } on http.ClientException catch (e) {
+      // Specifically catch browser/CORS issues on Chrome
+      throw Exception('Browser Network Error (CORS or Reachability): $e');
+    } catch (e) {
+      throw Exception('Network Error: $e');
+    }
+  }
+  static Exception _handleError(http.Response response) {
+    try {
+      final errorData = jsonDecode(response.body);
+      return Exception(errorData['message'] ?? 'Status ${response.statusCode}');
+    } catch (_) {
+      return Exception('API Error ${response.statusCode}');
+    }
+  }
 }

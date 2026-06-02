@@ -1,23 +1,202 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:sizemore_taxi/env_helper.dart';   // ← this is correct
+// Import your env helper (adjust path if needed)
 
-class RideStartedScreen extends StatelessWidget {
+class RideStartedScreen extends StatefulWidget {
   const RideStartedScreen({super.key});
+
+  @override
+  State<RideStartedScreen> createState() => _RideStartedScreenState();
+}
+
+class _RideStartedScreenState extends State<RideStartedScreen> {
+  GoogleMapController? _mapController;
+
+  // Replace these with real values from your booking/ride data (e.g. from provider, args, etc.)
+  final LatLng _pickup = const LatLng(-1.2921, 36.8219);     // Example: Nairobi CBD
+  final LatLng _dropoff = const LatLng(-1.3500, 36.9000);    // Example destination
+  LatLng _driverPosition = const LatLng(-1.2800, 36.8100);   // Starting driver pos (live update)
+
+  Set<Marker> _markers = {};
+  Set<Polyline> _polylines = {};
+  late final PolylinePoints _polylinePoints;
+
+  Timer? _simulationTimer; // Demo only — replace with socket.io in production
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Initialize PolylinePoints with API key from your env helper
+    // final apiKey = EnvHelper.['AIzaSyDraWkg1uWEzstuOOIsWWedooG6Xq-RctM'] ?? '';
+    final apiKey = EnvHelper.googleMapsKey;
+    if (apiKey.isEmpty) {
+      debugPrint("ERROR: Google Maps API key is missing from .env");
+      // You could show a SnackBar or fallback UI here
+    }
+
+    _polylinePoints = PolylinePoints(apiKey: apiKey);
+
+    _initMapAndMarkers();
+    _simulateDriverMovement(); // Remove this in real app
+  }
+
+  @override
+  void dispose() {
+    _simulationTimer?.cancel();
+    _mapController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initMapAndMarkers() async {
+    _markers = {
+      Marker(
+        markerId: const MarkerId('pickup'),
+        position: _pickup,
+        infoWindow: const InfoWindow(title: 'Pickup'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+      ),
+      Marker(
+        markerId: const MarkerId('dropoff'),
+        position: _dropoff,
+        infoWindow: const InfoWindow(title: 'Dropoff'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+      ),
+      Marker(
+        markerId: const MarkerId('driver'),
+        position: _driverPosition,
+        infoWindow: const InfoWindow(title: 'Driver • Ethan Carter'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+      ),
+    };
+
+    await _drawRoutePolyline();
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _drawRoutePolyline() async {
+    final request = PolylineRequest(
+      origin: PointLatLng(_pickup.latitude, _pickup.longitude),
+      destination: PointLatLng(_dropoff.latitude, _dropoff.longitude),
+      mode: TravelMode.driving,
+    );
+
+    final result = await _polylinePoints.getRouteBetweenCoordinates(request: request);
+
+    if (result.points.isNotEmpty) {
+      final polyPoints = result.points
+          .map((point) => LatLng(point.latitude, point.longitude))
+          .toList();
+
+      setState(() {
+        _polylines.add(
+          Polyline(
+            polylineId: const PolylineId('route'),
+            color: const Color(0xFFEEDB0B), // your yellow accent
+            width: 5,
+            points: polyPoints,
+            // Optional: dashed pattern
+            // patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+          ),
+        );
+      });
+
+      // Fit camera to show full route + some padding
+      if (_mapController != null) {
+        final bounds = _getLatLngBounds([_pickup, _dropoff]);
+        _mapController!.animateCamera(
+          CameraUpdate.newLatLngBounds(bounds, 80),
+        );
+      }
+    } else {
+      debugPrint('Route drawing failed: ${result.errorMessage}');
+      // You can show a user message here if needed
+    }
+  }
+
+  LatLngBounds _getLatLngBounds(List<LatLng> points) {
+    double south = points.map((p) => p.latitude).reduce((a, b) => a < b ? a : b);
+    double north = points.map((p) => p.latitude).reduce((a, b) => a > b ? a : b);
+    double west  = points.map((p) => p.longitude).reduce((a, b) => a < b ? a : b);
+    double east  = points.map((p) => p.longitude).reduce((a, b) => a > b ? a : b);
+
+    return LatLngBounds(
+      southwest: LatLng(south, west),
+      northeast: LatLng(north, east),
+    );
+  }
+
+  void _simulateDriverMovement() {
+    // This is just for demo — in real app use socket.io or Firestore stream
+    _simulationTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (!mounted) return;
+
+      setState(() {
+        _driverPosition = LatLng(
+          _driverPosition.latitude + 0.0008,
+          _driverPosition.longitude + 0.0012,
+        );
+
+        // Update only driver marker
+        _markers.removeWhere((m) => m.markerId.value == 'driver');
+        _markers.add(
+          Marker(
+            markerId: const MarkerId('driver'),
+            position: _driverPosition,
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          ),
+        );
+      });
+
+      _mapController?.animateCamera(CameraUpdate.newLatLng(_driverPosition));
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF232110),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Top App Bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      body: Stack(
+        children: [
+          GoogleMap(
+            initialCameraPosition: CameraPosition(
+              target: _driverPosition,
+              zoom: 14.5,
+            ),
+            markers: _markers,
+            polylines: _polylines,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+            compassEnabled: true,
+            onMapCreated: (GoogleMapController controller) {
+              _mapController = controller;
+
+              // Auto-fit route bounds once map is ready
+              if (_polylines.isNotEmpty) {
+                final bounds = _getLatLngBounds([_pickup, _dropoff]);
+                controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+              }
+            },
+          ),
+
+          // Top bar
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Icon(Icons.arrow_back, color: Colors.white),
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
                   Expanded(
                     child: Center(
                       child: Text(
@@ -30,206 +209,185 @@ class RideStartedScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 24), // Placeholder for symmetry
                 ],
               ),
             ),
+          ),
 
-            // Driver Info
-            _infoTile(
-              imageUrl:
-              'https://lh3.googleusercontent.com/aida-public/AB6AXuCUZzn15MnvPBTxM_qVjnM7dXMXWzwBXPEXPqlH5HTDFGpr1xfdvHcr0yxYeipwrGBPQqVPl8QtT_pJVv7FEEqaFzIuKK6pFxK_z8KMjC3BTH2h474fUeQYmvuqtBL9qhJMB9UPVbqXFI0mRjQuiFIlvkWlW-MGX6gIe92nhGW36Apl44Q0kJ4DtUpIhq2nReDfnWmRKInCT8SoQP3xG5Nankg_OPjYxdwMWmGQ6_q1gUQd6PZKpj4n1l6axy18kHt5um2y6iNi3x5R',
-              title: 'Ethan Carter',
-              subtitle: 'Driver',
-              isCircle: true,
-            ),
-
-            // Vehicle Info
-            _infoTile(
-              imageUrl:
-              'https://lh3.googleusercontent.com/aida-public/AB6AXuAcA9uxpthnPiowga6d16WjvD2VG7pQCGcaBcCcZ0ElXS3PcZw1sYhGMHrCKtGFmyl38q8bHSF0RN-oaXU2coiC5jp2wYatPu_-oudEiuY8KQTtqotQ_HOEWGMJu4DDVdctVd8IB9jrEnRyeSUkbQ9NHNaiUKG60HTN1l7WVn3_L2PP0H997-RJH1xjpoDw0O6tFyqJ_CVDU08pRmoZJSiyS1KOStyIwaPpaJ5GWQx2thWGpdI-t-kWDJzWOs0Ase3U78PgdoJ0xP8G',
-              title: 'Toyota Camry',
-              subtitle: 'Vehicle',
-            ),
-
-            // Trip Map
-            Padding(
-              padding: const EdgeInsets.all(14.0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.network(
-                  'https://lh3.googleusercontent.com/aida-public/AB6AXuCQESadzAJbqP-kBkjFN73uudVleU38ipQDB4NOnkmzvHQNVWxrvHjZrY5isC12VeeUVb4ADCK9ZPpg8r5LXegHEHb6VTkhyjAQQSGkThkfej_2FWu25E8SlXYRYYTzsLsaiF9g-xz1b07dq36pNUbIVCrRyXZ0QVSD6Juxqo7gTcNTC1XhzqO3UHuae2A-p5rfVK88LEoNIb13vpIxKNkq_hbE3KvVll7tv07-jsDsjcl-Du8bGUmwZ-K0f0463nbOODO8VjyjgIuA',
-                  fit: BoxFit.cover,
+          // Draggable bottom sheet
+          DraggableScrollableSheet(
+            initialChildSize: 0.38,
+            minChildSize: 0.25,
+            maxChildSize: 0.6,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: const BoxDecoration(
+                  color: Color(0xFF232110),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 ),
-              ),
-            ),
-
-            // Progress Bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Ride Started',
-                    style: GoogleFonts.notoSans(color: Colors.white),
-                  ),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: LinearProgressIndicator(
-                      value: 0.5,
-                      backgroundColor: const Color(0xFF686331),
-                      valueColor:
-                      const AlwaysStoppedAnimation(Color(0xFFEEDB0B)),
-                      minHeight: 8,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Action Buttons
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _actionButton('Contact Driver', bg: const Color(0xFF494622), textColor: Colors.white),
-                  _actionButton('Emergency', bg: const Color(0xFFEEDB0B), textColor: const Color(0xFF232110)),
-                ],
-              ),
-            ),
-
-            const Spacer(),
-
-            // Bottom Sheet (Payment Info)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: const BoxDecoration(
-                color: Color(0xFF232110),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    height: 4,
-                    width: 40,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF686331),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _infoTile(
-                    icon: Icons.attach_money,
-                    title: 'Cash',
-                    subtitle: 'Payment',
-                    bgIconColor: const Color(0xFF494622),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Fare estimate',
-                          style: GoogleFonts.notoSans(
-                            color: Colors.white,
-                          ),
+                child: ListView(
+                  controller: scrollController,
+                  padding: EdgeInsets.zero,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF686331),
+                          borderRadius: BorderRadius.circular(4),
                         ),
-                        Text(
-                          '\$25.00',
-                          style: GoogleFonts.notoSans(
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            )
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _infoTile({
-    String? imageUrl,
-    IconData? icon,
-    required String title,
-    required String subtitle,
-    bool isCircle = false,
-    Color bgIconColor = Colors.transparent,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        children: [
-          if (imageUrl != null)
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
-                borderRadius: isCircle ? null : BorderRadius.circular(12),
-                image: DecorationImage(
-                  image: NetworkImage(imageUrl),
-                  fit: BoxFit.cover,
+                    // Driver info
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundImage: const NetworkImage(
+                              'https://lh3.googleusercontent.com/...', // ← real driver photo URL
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Ethan Carter',
+                                  style: GoogleFonts.notoSans(
+                                    fontSize: 18,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  'Toyota Camry • KDA 123A',
+                                  style: GoogleFonts.notoSans(
+                                    color: const Color(0xFFcbc690),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.call, color: Color(0xFFEEDB0B)),
+                            onPressed: () {
+                              // Call driver logic
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const Divider(color: Color(0xFF494622), height: 32),
+
+                    // ETA / Progress
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Arriving in ~7 min',
+                            style: GoogleFonts.notoSans(
+                              fontSize: 20,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: LinearProgressIndicator(
+                              value: 0.65, // ← make dynamic later
+                              backgroundColor: const Color(0xFF686331),
+                              valueColor: const AlwaysStoppedAnimation(Color(0xFFEEDB0B)),
+                              minHeight: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Fare
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Fare estimate',
+                            style: GoogleFonts.notoSans(color: Colors.white),
+                          ),
+                          Text(
+                            'Ksh 1,250',
+                            style: GoogleFonts.notoSans(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Action buttons
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _actionButton(
+                              'Chat with Driver',
+                              bg: const Color(0xFF494622),
+                              textColor: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _actionButton(
+                              'Emergency',
+                              bg: const Color(0xFFEEDB0B),
+                              textColor: const Color(0xFF232110),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+                  ],
                 ),
-              ),
-            )
-          else if (icon != null)
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: bgIconColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: Colors.white),
-            ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title,
-                  style: GoogleFonts.notoSans(
-                      fontSize: 16,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500)),
-              Text(subtitle,
-                  style: GoogleFonts.notoSans(
-                      fontSize: 14,
-                      color: const Color(0xFFcbc690))),
-            ],
-          )
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _actionButton(String text,
-      {required Color bg, required Color textColor}) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 6),
-        height: 40,
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Center(
-          child: Text(
-            text,
-            style: GoogleFonts.notoSans(
-              fontWeight: FontWeight.bold,
-              color: textColor,
-            ),
-          ),
-        ),
+  Widget _actionButton(String text, {required Color bg, required Color textColor}) {
+    return ElevatedButton(
+      onPressed: () {
+        // Add real action (chat, emergency SOS, etc.)
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: bg,
+        foregroundColor: textColor,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      child: Text(
+        text,
+        style: GoogleFonts.notoSans(fontWeight: FontWeight.bold),
       ),
     );
   }

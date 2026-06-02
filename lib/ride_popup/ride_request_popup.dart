@@ -33,12 +33,26 @@ class RideRequestPopup extends StatelessWidget {
     final pickup = _getLocationName(rideData['pickupLocation']);
     final dropoff = _getLocationName(rideData['dropoffLocation']);
 
-    // Handle nested fare objects (e.g., { amount: 500, currency: 'KES' })
+    // // Handle nested fare objects (e.g., { amount: 500, currency: 'KES' })
+    // dynamic fareData = rideData['fare'];
+    // String fareDisplay = fareData is Map
+    //     ? "${fareData['amount']} ${fareData['currency']}"
+    //     : fareData.toString();
+// 2. FIXED FARE LOGIC
     dynamic fareData = rideData['fare'];
-    String fareDisplay = fareData is Map
-        ? "${fareData['amount']} ${fareData['currency']}"
-        : fareData.toString();
+    String fareDisplay = "0";
 
+    if (fareData != null) {
+      if (fareData is Map) {
+        // If backend sends { "amount": 500, "currency": "KES" }
+        final amount = fareData['amount'] ?? fareData['total'] ?? '0';
+        final currency = fareData['currency'] ?? 'Ksh';
+        fareDisplay = "$currency $amount";
+      } else {
+        // If backend sends a direct number or string like 500
+        fareDisplay = "Ksh ${fareData.toString()}";
+      }
+    }
     final vehicle = rideData['vehicleType'] ?? 'Standard';
     final distance = rideData['distance'] ?? 'Unknown dist';
 

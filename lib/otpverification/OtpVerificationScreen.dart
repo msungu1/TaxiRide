@@ -71,7 +71,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     try {
       // 2. API Call
       final response = await http.post(
-        Uri.parse("https://sizemoretaxi.onrender.com/api/auth/verify-otp"),
+        Uri.parse("https://sizemoretaxi-itpj.onrender.com/api/auth/verify-otp"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "userId": widget.userId, // This must be the Database ID from Registration
@@ -114,7 +114,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse("https://sizemoretaxi.onrender.com/api/auth/resend-otp"),
+        Uri.parse("https://sizemoretaxi-itpj.onrender.com/api/auth/resend-otp"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"userId": widget.userId}),
       );
