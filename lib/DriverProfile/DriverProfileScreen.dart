@@ -364,25 +364,121 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
 
   bool _isEmittingStatus = false;
 
+//   Future<void> _handleStatusUpdate() async {
+//     final tripId = _activeTripData?['tripId'] ?? _activeTripData?['_id'];
+//
+//     if (tripId == null) return;
+//
+//     // prevent spam clicks
+//     if (_isEmittingStatus) return;
+//     _isEmittingStatus = true;
+//
+//     try {
+//       final socket = SocketService.instance.socket;
+//
+//       if (_tripStatus == 'en_route') {
+//         // 🚕 Driver has arrived at pickup
+//         socket?.emit('driver_arrived', {
+//           'tripId': tripId,
+//         });
+//
+//         // 📢 notify passenger (optional extra event if backend supports it)
+//         socket?.emit('trip_status_update', {
+//           'tripId': tripId,
+//           'status': 'arrived',
+//         });
+//
+//         setState(() {
+//           _tripStatus = 'arrived';
+//         });
+//       }
+//
+//       else if (_tripStatus == 'arrived') {
+//         // 🚀 Passenger has entered car / trip starts
+//         socket?.emit('start_trip', {
+//           'tripId': tripId,
+//         });
+//
+//         socket?.emit('trip_status_update', {
+//           'tripId': tripId,
+//           'status': 'started',
+//         });
+//
+//
+//         // Navigator.push(
+//         //   context,
+//         //   MaterialPageRoute(
+//         //     builder: (_) => DriverActiveTripScreen(
+//         //       tripData: _activeTripData!,
+//         //     ),
+//         //   ),
+//         // );
+//         final tripEnded = await Navigator.push(
+//           context,
+//           MaterialPageRoute(
+//             builder: (_) => DriverActiveTripScreen(
+//               tripData: _activeTripData!,
+//             ),
+//           ),
+//         );
+//
+// // ✅ Reset UI immediately after trip ends
+//         if (tripEnded == true && mounted) {
+//           setState(() {
+//             _activeTripData = null;
+//             _tripStatus = 'idle';
+//             _selectedIndex = 0; // Home tab
+//           });
+//         }
+//
+//       }
+//
+//       else if (_tripStatus == 'started') {
+//         // 🏁 Trip completed
+//         socket?.emit('complete_trip', {
+//           'tripId': tripId,
+//         });
+//
+//         socket?.emit('trip_status_update', {
+//           'tripId': tripId,
+//           'status': 'completed',
+//         });
+//
+//         setState(() {
+//           _tripStatus = 'completed';
+//           _activeTripData = null;
+//         });
+//       }
+//
+//     } catch (e) {
+//       debugPrint("❌ Status update error: $e");
+//     }
+//
+//     // unlock button after delay
+//     Future.delayed(const Duration(seconds: 2), () {
+//       _isEmittingStatus = false;
+//     });
+//   }
+
   Future<void> _handleStatusUpdate() async {
     final tripId = _activeTripData?['tripId'] ?? _activeTripData?['_id'];
 
     if (tripId == null) return;
 
-    // prevent spam clicks
     if (_isEmittingStatus) return;
     _isEmittingStatus = true;
 
     try {
       final socket = SocketService.instance.socket;
 
+      /// ─────────────────────────────────────────────
+      /// 1. DRIVER ARRIVED AT PICKUP
+      /// ─────────────────────────────────────────────
       if (_tripStatus == 'en_route') {
-        // 🚕 Driver has arrived at pickup
         socket?.emit('driver_arrived', {
           'tripId': tripId,
         });
 
-        // 📢 notify passenger (optional extra event if backend supports it)
         socket?.emit('trip_status_update', {
           'tripId': tripId,
           'status': 'arrived',
@@ -393,8 +489,10 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
         });
       }
 
+      /// ─────────────────────────────────────────────
+      /// 2. START TRIP (OPEN ACTIVE TRIP SCREEN)
+      /// ─────────────────────────────────────────────
       else if (_tripStatus == 'arrived') {
-        // 🚀 Passenger has entered car / trip starts
         socket?.emit('start_trip', {
           'tripId': tripId,
         });
@@ -404,15 +502,11 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           'status': 'started',
         });
 
+        setState(() {
+          _tripStatus = 'started';
+        });
 
-        // Navigator.push(
-        //   context,
-        //   MaterialPageRoute(
-        //     builder: (_) => DriverActiveTripScreen(
-        //       tripData: _activeTripData!,
-        //     ),
-        //   ),
-        // );
+        /// 👉 ONLY NOW we open active trip screen
         final tripEnded = await Navigator.push(
           context,
           MaterialPageRoute(
@@ -422,19 +516,20 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           ),
         );
 
-// ✅ Reset UI immediately after trip ends
+        /// reset after returning
         if (tripEnded == true && mounted) {
           setState(() {
             _activeTripData = null;
             _tripStatus = 'idle';
-            _selectedIndex = 0; // Home tab
+            _selectedIndex = 0;
           });
         }
-
       }
 
+      /// ─────────────────────────────────────────────
+      /// 3. END TRIP (fallback if used from here)
+      /// ─────────────────────────────────────────────
       else if (_tripStatus == 'started') {
-        // 🏁 Trip completed
         socket?.emit('complete_trip', {
           'tripId': tripId,
         });
@@ -454,13 +549,10 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
       debugPrint("❌ Status update error: $e");
     }
 
-    // unlock button after delay
     Future.delayed(const Duration(seconds: 2), () {
       _isEmittingStatus = false;
     });
   }
-
-
   Widget _quickAction(IconData icon, String label, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
