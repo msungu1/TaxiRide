@@ -157,7 +157,7 @@ class SocketService {
       debugPrint("🚕 driver accepted ride: $data");
 
       _rideUpdateController.add({
-        'type': 'driver_accepted_trip',
+        'type': 'ride_accepted_by_driver',
         'status': 'accepted',
         ...data,
       });
@@ -195,7 +195,8 @@ class SocketService {
       if (tripId != null) leaveTripRoom(tripId);
 
       _rideUpdateController.add({
-        'type': 'completed',
+        'type': 'trip_completed',
+        'status': 'completed',
         ...data,
       });
     });
@@ -253,20 +254,7 @@ class SocketService {
     });
   }
 
-  // void updateLocation(double lat, double lng) {
-  //   // if (_socket?.connected != true) return;
-  //   //
-  //   // _socket!.emit('driver_location_update', {
-  //   //   'driverId': _currentUserId,
-  //   //   'lat': lat,
-  //   //   'lng': lng,
-  //   // });
-  //   _socket!.onConnect((_) {
-  //     if (_lastLocation != null) {
-  //       updateLocation(_lastLocation!['lat']!, _lastLocation!['lng']!);
-  //     }
-  //   });
-  // }
+
 
   // ===================== CLEANUP =====================
 

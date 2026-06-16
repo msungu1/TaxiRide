@@ -60,7 +60,7 @@ dependencies:
   socket_io_client: ^3.1.3
   flutter_polyline_points: ^3.1.0   # or latest from pub.dev
   image_picker: ^1.1.2          # check latest version on pub.dev
-
+  audioplayers: ^6.0.0
 #  flutter_svg: ^2.0.7  # ← Moved here ✅
 
 
@@ -93,7 +93,7 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/default_avatar.jpg    # ← add this line if missing
-
+    - assets/sounds/alert.mp3
 
 #    - assets/user.jpeg
 #    - assets/car.jpeg
