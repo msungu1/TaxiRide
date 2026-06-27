@@ -44,56 +44,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
   }
 
   @override
-  // void initState() {
-  //   super.initState();
-  //   SocketService.instance.joinTripRoom(widget.tripData['_id']);
-  //   final pickupLocation = widget.tripData['pickupLocation'];
-  //   final dropoffLocation = widget.tripData['dropoffLocation'];
-  //   print("========= ACTIVE TRIP DATA =========");
-  //   print(jsonEncode(widget.tripData));
-  //   print("====================================");
-  //
-  //   SocketService.instance.joinTripRoom(widget.tripData['_id']);
-  //   pickup = LatLng(
-  //     _safeDouble(pickupLocation?['lat']),
-  //     _safeDouble(pickupLocation?['lng']),
-  //   );
-  //
-  //   dropoff = LatLng(
-  //     _safeDouble(dropoffLocation?['lat']),
-  //     _safeDouble(dropoffLocation?['lng']),
-  //   );
-  //   _loadRoute();
-  //   _startLiveTracking();
-  //
-  //   _getAddress(pickup.latitude, pickup.longitude).then((value) {
-  //     setState(() => pickupAddress = value);
-  //   });
-  //
-  //   _getAddress(dropoff.latitude, dropoff.longitude).then((value) {
-  //     setState(() => dropoffAddress = value);
-  //   });
-  //
-  //   SocketService.instance.socket?.on("ride_assigned", (data) {
-  //     if (!mounted) return;
-  //
-  //     setState(() {
-  //       widget.tripData.addAll(data);
-  //     });
-  //
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       const SnackBar(
-  //         content: Text("🚕 New trip assigned"),
-  //         backgroundColor: Colors.green,
-  //       ),
-  //     );
-  //
-  //     // refresh map data if pickup/dropoff changed
-  //     if (data['pickup'] != null && data['dropoff'] != null) {
-  //       _loadRoute();
-  //     }
-  //   });
-  // }
+
 
   @override
   void initState() {
