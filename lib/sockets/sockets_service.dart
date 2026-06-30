@@ -73,7 +73,28 @@ class SocketService {
 
       _setupListeners();
     });
+    _socket!.onReconnect((_) {
 
+      debugPrint("🔄 SOCKET RECONNECTED");
+
+      if (_currentUserId != null) {
+
+        _socket!.emit('register', {
+          'userId': _currentUserId,
+          'role': _role,
+        });
+
+        debugPrint("✅ Re-registered socket");
+      }
+
+      // REJOIN ACTIVE TRIP
+      if (_currentTripId != null) {
+
+        joinTripRoom(_currentTripId!);
+
+        debugPrint("✅ Rejoined trip room $_currentTripId");
+      }
+    });
     _socket!.onDisconnect((_) {
       debugPrint("🔌 Disconnected");
     });
@@ -114,6 +135,7 @@ class SocketService {
       debugPrint("🚕 ride_assigned: $data");
 
       if (_role == 'rider') {
+        _currentTripId = null;
         if (tripId != null) joinTripRoom(tripId);
 
         _rideUpdateController.add({
@@ -187,20 +209,47 @@ class SocketService {
     });
 
     // ===================== COMPLETED =====================
+    // _socket!.on('trip_completed', (data) {
+    //   final tripId = data['tripId'];
+    //
+    //   debugPrint("🏁 trip_completed: $data");
+    //
+    //   if (tripId != null) leaveTripRoom(tripId);
+    //
+    //   _rideUpdateController.add({
+    //     'type': 'trip_completed',
+    //     'status': 'completed',
+    //     ...data,
+    //   });
+    // });
+
+// ===================== COMPLETED =====================
     _socket!.on('trip_completed', (data) {
-      final tripId = data['tripId'];
 
-      debugPrint("🏁 trip_completed: $data");
+      debugPrint("🏁🏁🏁 trip_completed RAW:");
+      debugPrint(data.toString());
 
-      if (tripId != null) leaveTripRoom(tripId);
+      final safeData = Map<String, dynamic>.from(data);
 
-      _rideUpdateController.add({
+      final tripId = safeData['tripId']?.toString();
+
+      if (tripId != null) {
+        leaveTripRoom(tripId);
+      }
+
+      _currentTripId = null;
+
+      final payload = <String, dynamic>{
         'type': 'trip_completed',
         'status': 'completed',
-        ...data,
-      });
-    });
+        ...safeData,
+      };
 
+      debugPrint("✅ FINAL COMPLETION PAYLOAD:");
+      debugPrint(payload.toString());
+
+      _rideUpdateController.add(payload);
+    });
 
     // ===================== 5. TRIP STARTED =====================
     _socket!.on('trip_started', (data) {
@@ -234,6 +283,7 @@ class SocketService {
     _socket!.on('registered', (data) {
       debugPrint(" Server confirmed registration: $data");
     });
+
   }
   // ===================== ACTIONS =====================
 

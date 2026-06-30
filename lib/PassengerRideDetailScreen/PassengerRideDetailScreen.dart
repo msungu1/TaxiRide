@@ -28,7 +28,7 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
 
   // 🛡️ LOCAL STATE STATE MACHINE
   Map<String, dynamic> localRideData = {};
-  Timer? _safetyStatusTimer; // 👈 ADD THIS LINE HERE
+  Timer? _safetyStatusTimer;
   String _currentStatusMessage = "Driver is on the way";
   final AudioPlayer _audioPlayer = AudioPlayer();
 
@@ -52,7 +52,13 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPolylineRoute();
+      // 🔌 Tell backend this screen is actively viewing this specific trip room context
+      if (localRideData['tripId'] != null || localRideData['_id'] != null) {
+        final activeTripId = localRideData['tripId'] ?? localRideData['_id'];
+        SocketService.instance.socket?.emit('join_trip', {'tripId': activeTripId.toString()});
+      }
     });
+
 
     _initUnifiedSocketListener();
   }
@@ -62,6 +68,7 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
       if (!mounted || data == null) return;
       debugPrint("📡 Unified Tracking Incoming Event Frame: $data");
 
+      // Extract variations of key names from backend file schemas
       final type = data['type']?.toString();
       final rawStatus = (data['status'] ?? (data['trip'] != null ? data['trip']['status'] : null))?.toString().toLowerCase();
 
@@ -88,7 +95,7 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
 
         if (mounted) setState(() {});
       }
-
+      bool shouldShowCompletionDialog = false;
       // ================= 2. UI & LIFECYCLE STATE CHANGES =================
       setState(() {
         if (data['driver'] != null) {
@@ -120,103 +127,86 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
           );
         }
 
-        // ✅ COMPLETED EVENT HANDLER
-        final eventType = data['type']?.toString();
-        final status = data['status']?.toString();
+        // ✅ BALANCED COMPLETED EVENT CHECKER (Matches Backend Lines 416-424)
+        final eventType = data['type']?.toString().toLowerCase() ?? '';
+        final statusString = data['status']?.toString().toLowerCase() ?? '';
+
         final isCompletedEvent =
-            (eventType?.toLowerCase().contains('complete') ?? false) ||
-                (status?.toLowerCase().contains('complete') ?? false);
+            eventType.contains('complete') ||
+                statusString.contains('complete') ||
+                _tripStage == 'completed';
+        debugPrint("🔥 COMPLETION EVENT RECEIVED: $data");
 
-//         if (isCompletedEvent && !_tripCompletedHandled) {
-//           _tripCompletedHandled = true;
-//           _currentStatusMessage = "Trip Completed";
-//           _playAlertSound();
-//
-//           _rideSubscription?.cancel();
-//           _safetyStatusTimer?.cancel();
-//
-//           if (mounted) {
-//             ScaffoldMessenger.of(context).showSnackBar(
-//               const SnackBar(content: Text("✅ Trip completed successfully"), backgroundColor: Colors.green),
-//             );
-//           }
-//
-//
-// // Show summary dialog immediately
-//           _showTripCompletedDialog();
-//
-//
-//           Future.delayed(const Duration(seconds: 2), () {
-//             if (!mounted) return;
-//
-//             // close ONLY the dialog
-//             Navigator.of(context, rootNavigator: true).pop();
-//
-//             // navigate safely
-//             Navigator.of(context).pushAndRemoveUntil(
-//               MaterialPageRoute(
-//                 builder: (_) => const ProfileScreen(),
-//               ),
-//                   (route) => false,
-//             );
-//           });
-//
-//
-//           return;
-//         }
+        // if (isCompletedEvent && !_tripCompletedHandled) {
+        //   _tripCompletedHandled = true;
+        //
+        //   _currentStatusMessage = "Trip Completed";
+        //   _playAlertSound();
+        //
+        //   // Stop active tracking listeners cleanly
+        //   _rideSubscription?.cancel();
+        //   _rideSubscription = null;
+        //   _safetyStatusTimer?.cancel();
+        //
+        //   // Extract metrics safely sent from backend schema keys
+        //   if (data['fare'] != null) localRideData['fare'] = data['fare'];
+        //   if (data['distance'] != null) localRideData['distance'] = data['distance'];
+        //
+        //   if (mounted) {
+        //     ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        //     ScaffoldMessenger.of(context).showSnackBar(
+        //       const SnackBar(
+        //         content: Text("✅ Trip completed successfully"),
+        //         backgroundColor: Colors.green,
+        //         duration: Duration(seconds: 2),
+        //       ),
+        //     );
+        //   }
+        //
+        //   // Trigger zero-action dialog popup
+        //   _showTripCompletedDialog();
+        //   return;
+        // }
+
         if (isCompletedEvent && !_tripCompletedHandled) {
-
           _tripCompletedHandled = true;
 
-          // update UI only
-          setState(() {
-            _currentStatusMessage = "Trip Completed";
-          });
+          debugPrint("✅ TRIP COMPLETION EVENT DETECTED");
+
+          _currentStatusMessage = "Trip Completed";
+
+          if (data['fare'] != null) {
+            localRideData['fare'] = data['fare'];
+          }
+
+          if (data['distance'] != null) {
+            localRideData['distance'] = data['distance'];
+          }
 
           _playAlertSound();
-
-          // stop listeners
-          _rideSubscription?.cancel();
-          _safetyStatusTimer?.cancel();
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text("✅ Trip completed successfully"),
                 backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
               ),
             );
           }
+          debugPrint("📦 SHOWING COMPLETION DIALOG");
+          // ✅ SHOW DIALOG
+          shouldShowCompletionDialog = true;
 
-          // show dialog
-          _showTripCompletedDialog();
 
-          // navigate AFTER frame
-          Future.delayed(const Duration(seconds: 2), () async {
 
-            if (!mounted) return;
-
-            // close dialog safely
-            Navigator.of(context, rootNavigator: true).pop();
-
-            // wait one frame
-            await Future.delayed(const Duration(milliseconds: 300));
-
-            if (!mounted) return;
-
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(
-                builder: (_) => const ProfileScreen(),
-              ),
-                  (route) => false,
-            );
-          });
 
           return;
         }
         if (type == 'trip_cancelled' || rawStatus == 'cancelled') {
           _currentStatusMessage = "Trip Cancelled";
           _rideSubscription?.cancel();
+          _rideSubscription = null;
           _safetyStatusTimer?.cancel();
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Trip was cancelled by driver"), backgroundColor: Colors.red),
@@ -226,173 +216,12 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
           });
         }
       });
+      if (shouldShowCompletionDialog && mounted) {
+        debugPrint("📦 SHOWING COMPLETION DIALOG");
+        _showTripCompletedDialog();
+      }
     });
   }
-
-  // void _initUnifiedSocketListener() {
-  //   _rideSubscription = SocketService.instance.rideUpdates.listen((data) {
-  //     if (!mounted || data == null) return;
-  //     debugPrint("📡 Unified Tracking Incoming Event Frame: $data");
-  //
-  //     // Extract type and status flags safely across varying payload nested structures
-  //     final type = data['type']?.toString();
-  //     final rawStatus = (data['status'] ?? (data['trip'] != null ? data['trip']['status'] : null))?.toString().toLowerCase();
-  //
-  //     // ================= 1. LIVE GPS MAP COORDINATION (Run outside setState to avoid lagging map animations) =================
-  //     if (data['lat'] != null && data['lng'] != null) {
-  //       final newPos = LatLng(
-  //         double.parse(data['lat'].toString()),
-  //         double.parse(data['lng'].toString()),
-  //       );
-  //
-  //       _driverLocation = newPos;
-  //       _loadPolylineRoute(); // ✅ refresh map route
-  //
-  //       // Smooth camera interpolation tracking threshold
-  //       if (_lastAnimatedDriverPosition == null ||
-  //           Geolocator.distanceBetween(
-  //             _lastAnimatedDriverPosition!.latitude,
-  //             _lastAnimatedDriverPosition!.longitude,
-  //             newPos.latitude,
-  //             newPos.longitude,
-  //           ) > 15) {
-  //         _mapController?.animateCamera(CameraUpdate.newLatLng(newPos));
-  //         _lastAnimatedDriverPosition = newPos;
-  //       }
-  //
-  //       // Update driver car marker on the map frame
-  //       if (mounted) {
-  //         setState(() {});
-  //       }
-  //     }
-  //
-  //     // ================= 2. UI & LIFECYCLE STATE CHANGES =================
-  //     setState(() {
-  //       // Capture driver profile structure if sent dynamically in payload chunks
-  //
-  //       if (data['driver'] != null) {
-  //         localRideData['driver'] =
-  //         Map<String, dynamic>.from(data['driver']);
-  //       } else if (data['trip'] != null &&
-  //           data['trip']['driver'] != null) {
-  //         localRideData['driver'] =
-  //         Map<String, dynamic>.from(data['trip']['driver']);
-  //       }
-  //
-  //       // Handle backend status string changes
-  //       if (rawStatus != null) {
-  //         _currentStatusMessage = _parseStatus(rawStatus);
-  //         _tripStage = rawStatus;
-  //         _loadPolylineRoute(); // ✅ refresh map route
-  //
-  //
-  //         if (rawStatus == 'arrived' && !_arrivalHandled) {
-  //
-  //           _arrivalHandled = true;
-  //
-  //           _playAlertSound();
-  //
-  //           ScaffoldMessenger.of(context).hideCurrentSnackBar();
-  //
-  //           ScaffoldMessenger.of(context).showSnackBar(
-  //             const SnackBar(
-  //               content: Text("🚕 Driver has arrived at your pickup point!"),
-  //               backgroundColor: Colors.green,
-  //               duration: Duration(seconds: 5),
-  //             ),
-  //           );
-  //         }
-  //       }
-  //
-  //
-  //       if ((type == 'trip_started' ||
-  //           rawStatus == 'in_progress' ||
-  //           rawStatus == 'started') &&
-  //           !_tripStartedHandled) {
-  //
-  //         _tripStartedHandled = true;
-  //
-  //         _currentStatusMessage = "Trip Started... Sit back and relax";
-  //
-  //         _playAlertSound();
-  //
-  //         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-  //
-  //         ScaffoldMessenger.of(context).showSnackBar(
-  //           const SnackBar(
-  //             content: Text("🛣️ Your trip has started"),
-  //             backgroundColor: Colors.blue,
-  //             duration: Duration(seconds: 5),
-  //           ),
-  //         );
-  //       }
-  //
-  //       final eventType = data['type']?.toString();
-  //       final status = data['status']?.toString();
-  //
-  //       final isCompletedEvent =
-  //           (eventType?.toLowerCase().contains('complete') ?? false) ||
-  //               (status?.toLowerCase().contains('complete') ?? false);
-  //
-  //       if (isCompletedEvent && !_tripCompletedHandled) {
-  //         _tripCompletedHandled = true;
-  //
-  //         _currentStatusMessage = "Trip Completed";
-  //
-  //         _playAlertSound();
-  //
-  //         // Stop listening to socket updates (NO await needed)
-  //         _rideSubscription?.cancel();
-  //         _rideSubscription = null;
-  //
-  //         _safetyStatusTimer?.cancel();
-  //
-  //         if (mounted) {
-  //           ScaffoldMessenger.of(context).hideCurrentSnackBar();
-  //
-  //           ScaffoldMessenger.of(context).showSnackBar(
-  //             const SnackBar(
-  //               content: Text("✅ Trip completed successfully"),
-  //               backgroundColor: Colors.green,
-  //               duration: Duration(seconds: 3),
-  //             ),
-  //           );
-  //         }
-  //
-  //         // Small delay for smooth UX
-  //         Future.delayed(const Duration(milliseconds: 800), () {
-  //           if (mounted) {
-  //             _showTripCompletedDialog();
-  //           }
-  //         });
-  //
-  //         return;
-  //       }
-  //
-  //       if (type == 'trip_cancelled' || rawStatus == 'cancelled') {
-  //         _currentStatusMessage = "Trip Cancelled";
-  //
-  //         _rideSubscription?.cancel();
-  //         _rideSubscription = null;
-  //         _safetyStatusTimer?.cancel();
-  //
-  //         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-  //         ScaffoldMessenger.of(context).showSnackBar(
-  //           const SnackBar(
-  //               content: Text("Trip was cancelled by driver"),
-  //               backgroundColor: Colors.red
-  //           ),
-  //         );
-  //
-  //         Future.delayed(const Duration(seconds: 2), () {
-  //           if (mounted) {
-  //             Navigator.of(context).popUntil((route) => route.isFirst);
-  //           }
-  //         });
-  //       }
-  //     });
-  //   });
-  // }
   void _showTripCompletedDialog() {
     final distanceKm = Geolocator.distanceBetween(
       _pickupLocation.latitude,
@@ -402,40 +231,128 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
     ) / 1000;
 
     final startTime = DateTime.tryParse(localRideData['startTime'] ?? '');
-    final endTime = DateTime.tryParse(localRideData['endTime'] ?? DateTime.now().toIso8601String());
+    final endTime = DateTime.tryParse(
+      localRideData['endTime'] ?? DateTime.now().toIso8601String(),
+    );
+
     final duration = (startTime != null && endTime != null)
-        ? endTime.difference(startTime).inMinutes.toString() + " mins"
+        ? "${endTime.difference(startTime).inMinutes} mins"
         : "N/A";
+
+    // ✅ SHOW SUCCESS SNACKBAR IMMEDIATELY
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("✅ Trip completed successfully"),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    BuildContext? activeDialogContext;
 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
+      builder: (dialogContext) {
+
+        activeDialogContext = dialogContext;
+
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: const Color(0xFF121212),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.check_circle, color: Colors.green),
               SizedBox(width: 10),
-              Text("Trip Completed"),
+              Text(
+                "Trip Completed",
+                style: TextStyle(color: Colors.white),
+              ),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _summaryRow("Pickup", localRideData['pickupLocation']?['address'] ?? "Pickup Location"),
-              _summaryRow("Dropoff", localRideData['dropoffLocation']?['address'] ?? "Dropoff Location"),
-              _summaryRow("Fare", "KES ${localRideData['fare'] ?? 0}"),
-              _summaryRow("Distance", "${distanceKm.toStringAsFixed(2)} km"),
-              _summaryRow("Duration", duration),
+              const Center(
+                child: Text(
+                  "Redirecting to home screen...",
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              _summaryRow(
+                "Pickup",
+                localRideData['pickupLocation']?['address'] ??
+                    "Pickup Location",
+              ),
+
+              const SizedBox(height: 6),
+
+              _summaryRow(
+                "Dropoff",
+                localRideData['dropoffLocation']?['address'] ??
+                    "Dropoff Location",
+              ),
+
+              const SizedBox(height: 6),
+
+              _summaryRow(
+                "Fare",
+                "KES ${localRideData['fare'] ?? 0}",
+              ),
+
+              const SizedBox(height: 6),
+
+              _summaryRow(
+                "Distance",
+                "${distanceKm.toStringAsFixed(2)} km",
+              ),
+
+              const SizedBox(height: 6),
+
+              _summaryRow(
+                "Duration",
+                duration,
+              ),
             ],
           ),
         );
       },
     );
-  }
 
+    Future.delayed(const Duration(seconds: 3), () async {
+      if (!mounted) return;
+
+      debugPrint("🚀 CLOSING DIALOG");
+
+      // close dialog first
+      if (activeDialogContext != null) {
+        Navigator.of(activeDialogContext!).pop();
+      }      debugPrint("🚀 CLEANING UP");
+
+      await _rideSubscription?.cancel();
+      _rideSubscription = null;
+      _safetyStatusTimer?.cancel();
+
+      debugPrint("🚀 NAVIGATING TO PROFILE");
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => const ProfileScreen(),
+        ),
+            (route) => false,
+      );
+    });
+  }
   void _initializeLocations() {
     final pickup = localRideData['pickupLocation'];
     final dropoff = localRideData['dropoffLocation'];
@@ -445,20 +362,14 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
         double.parse(pickup['lat'].toString()),
         double.parse(pickup['lng'].toString()),
       );
-      // _driverLocation = _pickupLocation;
       if (localRideData['driver'] != null &&
           localRideData['driver']['currentLocation'] != null) {
-
         final driverLoc = localRideData['driver']['currentLocation'];
-
         _driverLocation = LatLng(
           double.parse(driverLoc['lat'].toString()),
           double.parse(driverLoc['lng'].toString()),
         );
-
       } else {
-
-        // fallback only if driver location missing
         _driverLocation = _pickupLocation;
       }
     }
@@ -492,136 +403,39 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
 
   Future<void> _playAlertSound() async {
     try {
-      await _audioPlayer.stop(); // prevent overlap
-      await _audioPlayer.play(
-        AssetSource('sounds/alert.mp3'),
-      );
+      await _audioPlayer.stop();
+      await _audioPlayer.play(AssetSource('sounds/alert.mp3'));
     } catch (e) {
       debugPrint("Audio error: $e");
     }
   }
-  // void _showTripCompletedDialog() {
-  //   showDialog(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     builder: (context) {
-  //       return AlertDialog(
-  //         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-  //         title: const Row(
-  //           children: [
-  //             Icon(Icons.check_circle, color: Colors.green),
-  //             SizedBox(width: 10),
-  //             Text("Trip Completed"),
-  //           ],
-  //         ),
-  //         content: Column(
-  //           mainAxisSize: MainAxisSize.min,
-  //           crossAxisAlignment: CrossAxisAlignment.start,
-  //           children: [
-  //             _summaryRow("Pickup", localRideData['pickupLocation']?['address'] ?? "Pickup Location"),
-  //             const SizedBox(height: 10),
-  //             _summaryRow("Dropoff", localRideData['dropoffLocation']?['address'] ?? "Dropoff Location"),
-  //             const SizedBox(height: 10),
-  //             _summaryRow("Fare", "KES ${localRideData['fare'] ?? 0}"),
-  //           ],
-  //         ),
-  //         actions: [
-  //           SizedBox(
-  //             width: double.infinity,
-  //             child: ElevatedButton(
-  //               style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-  //               onPressed: () {
-  //                 // Navigator.of(context).pop();
-  //                 // Navigator.of(context).popUntil((route) => route.isFirst);
-  //                 Navigator.pushAndRemoveUntil(
-  //                   context,
-  //                   MaterialPageRoute(
-  //                     builder: (_) => const ProfileScreen(),
-  //                   ),
-  //                       (route) => false,
-  //                 );
-  //               },
-  //               child: const Text("DONE", style: TextStyle(color: Colors.white)),
-  //             ),
-  //           ),
-  //         ],
-  //       );
-  //     },
-  //   );
-  // }
 
   Widget _summaryRow(String title, String value) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(width: 80, child: Text("$title:", style: const TextStyle(fontWeight: FontWeight.bold))),
-        Expanded(child: Text(value)),
+        SizedBox(width: 80, child: Text("$title:", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white70))),
+        Expanded(child: Text(value, style: const TextStyle(color: Colors.white))),
       ],
     );
   }
 
-  // Future<void> _loadPolylineRoute() async {
-  //   final url = "https://maps.googleapis.com/maps/api/directions/json"
-  //       "?origin=${_pickupLocation.latitude},${_pickupLocation.longitude}"
-  //       "&destination=${_dropoffLocation.latitude},${_dropoffLocation.longitude}"
-  //       "&key=$apiKey";
-  //
-  //   try {
-  //     final response = await http.get(Uri.parse(url));
-  //     final data = jsonDecode(response.body);
-  //
-  //     if (data["routes"] == null || data["routes"].isEmpty) return;
-  //
-  //     final points = data["routes"][0]["overview_polyline"]["points"];
-  //     final decodedPoints = PolylinePoints.decodePolyline(points);
-  //     final polylineCoordinates = decodedPoints.map((e) => LatLng(e.latitude, e.longitude)).toList();
-  //
-  //     setState(() {
-  //       _polylines = {
-  //         Polyline(
-  //           polylineId: const PolylineId("trip_route"),
-  //           points: polylineCoordinates,
-  //           width: 6,
-  //           color: Colors.blue,
-  //           geodesic: true,
-  //         ),
-  //       };
-  //     });
-  //
-  //     _zoomToFitRoute();
-  //   } catch (e) {
-  //     debugPrint("❌ Polyline processing error: $e");
-  //   }
-  // }
   Future<void> _loadPolylineRoute() async {
-
     LatLng origin;
     LatLng destination;
 
-    // ================= DETERMINE ROUTE BASED ON TRIP STAGE =================
-
     if (_tripStage == 'accepted' || _tripStage == 'arrived') {
-
-      // Driver going to pickup
       origin = _driverLocation;
       destination = _pickupLocation;
-
-    } else if (_tripStage == 'in_progress' ||
-        _tripStage == 'started') {
-
-      // Trip started -> heading to destination
+    } else if (_tripStage == 'in_progress' || _tripStage == 'started') {
       origin = _driverLocation;
       destination = _dropoffLocation;
-
     } else {
-
-      // Fallback
       origin = _pickupLocation;
       destination = _dropoffLocation;
     }
 
-    final url =
-        "https://maps.googleapis.com/maps/api/directions/json"
+    final url = "https://maps.googleapis.com/maps/api/directions/json"
         "?origin=${origin.latitude},${origin.longitude}"
         "&destination=${destination.latitude},${destination.longitude}"
         "&key=$apiKey";
@@ -632,15 +446,9 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
 
       if (data["routes"] == null || data["routes"].isEmpty) return;
 
-      final points =
-      data["routes"][0]["overview_polyline"]["points"];
-
-      final decodedPoints =
-      PolylinePoints.decodePolyline(points);
-
-      final polylineCoordinates = decodedPoints
-          .map((e) => LatLng(e.latitude, e.longitude))
-          .toList();
+      final points = data["routes"][0]["overview_polyline"]["points"];
+      final decodedPoints = PolylinePoints.decodePolyline(points);
+      final polylineCoordinates = decodedPoints.map((e) => LatLng(e.latitude, e.longitude)).toList();
 
       setState(() {
         _polylines = {
@@ -655,41 +463,26 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
       });
 
       _zoomToFitDynamicRoute(origin, destination);
-
     } catch (e) {
       debugPrint("❌ Polyline processing error: $e");
     }
   }
 
-  void _zoomToFitDynamicRoute(
-      LatLng origin,
-      LatLng destination,
-      ) {
-
+  void _zoomToFitDynamicRoute(LatLng origin, LatLng destination) {
     if (_mapController == null) return;
 
     LatLngBounds bounds = LatLngBounds(
       southwest: LatLng(
-        origin.latitude < destination.latitude
-            ? origin.latitude
-            : destination.latitude,
-        origin.longitude < destination.longitude
-            ? origin.longitude
-            : destination.longitude,
+        origin.latitude < destination.latitude ? origin.latitude : destination.latitude,
+        origin.longitude < destination.longitude ? origin.longitude : destination.longitude,
       ),
       northeast: LatLng(
-        origin.latitude > destination.latitude
-            ? origin.latitude
-            : destination.latitude,
-        origin.longitude > destination.longitude
-            ? origin.longitude
-            : destination.longitude,
+        origin.latitude > destination.latitude ? origin.latitude : destination.latitude,
+        origin.longitude > destination.longitude ? origin.longitude : destination.longitude,
       ),
     );
 
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 80),
-    );
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
   }
 
   @override
@@ -709,19 +502,15 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. STATIC INITIALIZED MAP LAYER
           GoogleMap(
             mapType: MapType.normal,
             initialCameraPosition: CameraPosition(target: _driverLocation, zoom: 14),
-
             onMapCreated: (controller) {
               _mapController = controller;
-
               Future.delayed(const Duration(milliseconds: 500), () {
                 _loadPolylineRoute();
               });
             },
-
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
             compassEnabled: false,
@@ -748,8 +537,6 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
               ),
             },
           ),
-
-          // 2. TOP PANEL (DYNAMIC RE-RENDERING IN-PLACE)
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 20,
@@ -783,8 +570,6 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
               ),
             ),
           ),
-
-          // 3. BOTTOM PANEL
           Align(
             alignment: Alignment.bottomCenter,
             child: Container(
