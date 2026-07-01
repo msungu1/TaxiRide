@@ -120,6 +120,7 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
 
         if ((type == 'trip_started' || rawStatus == 'in_progress' || rawStatus == 'started') && !_tripStartedHandled) {
           _tripStartedHandled = true;
+          localRideData['startTime'] = data['startTime'] ?? DateTime.now().toIso8601String(); // ← add
           _currentStatusMessage = "Trip Started... Sit back and relax";
           _playAlertSound();
           ScaffoldMessenger.of(context).showSnackBar(
@@ -137,40 +138,13 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
                 _tripStage == 'completed';
         debugPrint("🔥 COMPLETION EVENT RECEIVED: $data");
 
-        // if (isCompletedEvent && !_tripCompletedHandled) {
-        //   _tripCompletedHandled = true;
-        //
-        //   _currentStatusMessage = "Trip Completed";
-        //   _playAlertSound();
-        //
-        //   // Stop active tracking listeners cleanly
-        //   _rideSubscription?.cancel();
-        //   _rideSubscription = null;
-        //   _safetyStatusTimer?.cancel();
-        //
-        //   // Extract metrics safely sent from backend schema keys
-        //   if (data['fare'] != null) localRideData['fare'] = data['fare'];
-        //   if (data['distance'] != null) localRideData['distance'] = data['distance'];
-        //
-        //   if (mounted) {
-        //     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        //     ScaffoldMessenger.of(context).showSnackBar(
-        //       const SnackBar(
-        //         content: Text("✅ Trip completed successfully"),
-        //         backgroundColor: Colors.green,
-        //         duration: Duration(seconds: 2),
-        //       ),
-        //     );
-        //   }
-        //
-        //   // Trigger zero-action dialog popup
-        //   _showTripCompletedDialog();
-        //   return;
-        // }
 
         if (isCompletedEvent && !_tripCompletedHandled) {
           _tripCompletedHandled = true;
-
+          if (data['endTime'] != null) localRideData['endTime'] = data['endTime'];
+          if (data['fare'] != null) localRideData['fare'] = data['fare'];
+          if (data['pickupLocation'] != null) localRideData['pickupLocation'] = data['pickupLocation'];
+          if (data['dropoffLocation'] != null) localRideData['dropoffLocation'] = data['dropoffLocation'];
           debugPrint("✅ TRIP COMPLETION EVENT DETECTED");
 
           _currentStatusMessage = "Trip Completed";
@@ -323,35 +297,47 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
                 "Duration",
                 duration,
               ),
+              const SizedBox(height: 18),
+
+              const Center(
+                child: Text(
+                  "Thanks for choosing Sizemore 💛",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFFFFD60A), // matches your brandYellow accent
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+
             ],
           ),
         );
       },
     );
 
-    Future.delayed(const Duration(seconds: 3), () async {
-      if (!mounted) return;
 
-      debugPrint("🚀 CLOSING DIALOG");
+    Future.delayed(const Duration(seconds: 8), () async {
+      debugPrint("🚀 TIMER FIRED - bypassing mounted check");
 
-      // close dialog first
-      if (activeDialogContext != null) {
-        Navigator.of(activeDialogContext!).pop();
-      }      debugPrint("🚀 CLEANING UP");
+      final nav = SocketService.instance.navigatorKey?.currentState;
+      debugPrint("🧭 navigatorKey currentState: $nav");
 
-      await _rideSubscription?.cancel();
-      _rideSubscription = null;
-      _safetyStatusTimer?.cancel();
+      if (nav == null) {
+        debugPrint("❌ navigatorKey is null");
+        return;
+      }
 
       debugPrint("🚀 NAVIGATING TO PROFILE");
 
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => const ProfileScreen(),
-        ),
+      // pushAndRemoveUntil with (route) => false removes ALL routes including the dialog
+      nav.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const ProfileScreen()),
             (route) => false,
       );
     });
+
   }
   void _initializeLocations() {
     final pickup = localRideData['pickupLocation'];
