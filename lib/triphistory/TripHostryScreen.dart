@@ -25,9 +25,16 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
 
   Future<void> _fetchTripHistory() async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final String url =
-        '/api/trips/activity?userId=${userProvider.id}&role=rider';
+    if (userProvider.id == null || userProvider.id!.isEmpty) {
+      setState(() {
+        _errorMessage = "No user ID found. Please log in again.";
+        _isLoading = false;
+      });
+      return;
+    }
 
+    final url =
+        'https://sizemoretaxi-itpj.onrender.com/api/trips/activity?userId=${userProvider.id}&role=rider';
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {

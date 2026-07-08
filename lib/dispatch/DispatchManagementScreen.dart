@@ -87,7 +87,8 @@ class _DispatchManagementScreenState extends State<DispatchManagementScreen> {
           pickup['lat']?.toDouble() ?? 0.0,
           pickup['lng']?.toDouble() ?? 0.0,
         ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueGreen),
         infoWindow: const InfoWindow(title: "Pickup Point"),
       ));
     }

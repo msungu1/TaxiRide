@@ -50,10 +50,16 @@ class _RequestRideTwoState extends State<RequestRideTwo> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
-        // Auto-close after 3 seconds
+      builder: (dialogContext) {
+        // Auto-close after 3 seconds.
+        // ✅ FIX: use dialogContext (the context this builder handed us) instead
+        // of the outer RequestRideTwo context. _handleConfirmTrip immediately
+        // does a pushReplacement right after calling this, which deactivates
+        // RequestRideTwo's own context — so by the time this timer fired it was
+        // popping through a dead widget tree and crashing with "Looking up a
+        // deactivated widget's ancestor is unsafe."
         Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) Navigator.pop(context);
+          if (Navigator.canPop(dialogContext)) Navigator.pop(dialogContext);
         });
 
         return AlertDialog(
@@ -66,7 +72,7 @@ class _RequestRideTwoState extends State<RequestRideTwo> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context); // just close dialog
+                Navigator.pop(dialogContext); // just close dialog
               },
               child: const Text("OK", style: TextStyle(color: Color(0xFFEEDB0B))),
             ),
@@ -327,20 +333,20 @@ class _RequestRideTwoState extends State<RequestRideTwo> {
                   ),
                   child: _isSubmitting
                       ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.black,
-                            strokeWidth: 2,
-                          ),
-                        )
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.black,
+                      strokeWidth: 2,
+                    ),
+                  )
                       : const Text(
-                          'Confirm & Request Ride',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
+                    'Confirm & Request Ride',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
                 ),
               ),
             ),

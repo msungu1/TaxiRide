@@ -20,6 +20,13 @@ import 'package:sizemore_taxi/sockets/sockets_service.dart';
 import 'package:sizemore_taxi/main.dart';
 // import 'package:sizemore_taxi/dispatch/DispatchDriverDialog.dart';
 import 'package:sizemore_taxi/dispatch/DispatchManagementScreen.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../RatingsScreen.dart';
+import'../RatingModel.dart';
+import 'package:sizemore_taxi/adminuser/admin_colors.dart';
+import 'package:sizemore_taxi/adminuser/dashboard_header.dart';
+
 
 
 /// Admin Dashboard screen for managing users, feedback, and reports.
@@ -34,6 +41,7 @@ class _AdminScreenState extends State<AdminScreen> {
   Map<MarkerId, Marker> _driverMarkers = {};
   List<UserModel> users = [];
   List<UserModel> filteredUsers = [];
+  List<RatingModel> ratingsList = [];
   List<UserModel> selectedUsers = [];
   List<dynamic> pendingTrips = []; // Dynamic list for trips
   bool isLoading = true;
@@ -51,70 +59,12 @@ class _AdminScreenState extends State<AdminScreen> {
   int onlineDriversCount = 0;
 // In initState:
   Timer? _pollingTimer;
+  final AudioPlayer _emergencyPlayer = AudioPlayer();
+
   int _lastTripCount = 0;
   bool _isPopupShowing = false;
   StreamSubscription? _socketSub;
-
-  @override
-  // void initState() {
-  //   super.initState();
-  //   // 1. Link the navigator key so popups can show over any screen
-  //   SocketService.instance.setNavigatorKey(navigatorKey);
-  //
-  //   // 2. Initialize as Admin
-  //   // Use dummy lat/lng for admin if location isn't required for dashboard
-  //   SocketService.instance.init(
-  //     userId: "69ba699b69ab7e2d98210e71", // your admin id
-  //     lat: 0.0,
-  //     lng: 0.0,
-  //     role: 'admin',
-  //   );
-  //
-  //   // Listen for driver updates via Socket
-  //   SocketService.instance.socket?.on('driver_location_update', (data) {
-  //     _updateDriverMarker(data);
-  //   });
-  //   SocketService.instance.socket?.on('trip_cancelled', (data) {
-  //     debugPrint("🚨 Admin: Trip ${data['tripId']} was cancelled. Removing from UI...");
-  //
-  //     if (mounted) {
-  //       setState(() {
-  //         // Remove the trip from the local pending list immediately
-  //         pendingTrips.removeWhere((trip) => trip['_id'] == data['tripId']);
-  //
-  //         // Update the count so the UI updates
-  //         pendingBookingsCount = pendingTrips.length;
-  //       });
-  //
-  //       // Optional: If the popup for THIS specific trip is showing, close it
-  //       if (_isPopupShowing) {
-  //         Navigator.of(context).pop();
-  //         _isPopupShowing = false;
-  //       }
-  //
-  //       Fluttertoast.showToast(
-  //         msg: "A ride request was cancelled",
-  //         backgroundColor: Colors.orange,
-  //       );
-  //     }
-  //   });
-  //
-  //   fetchUsers();
-  //   // fetchFeedback();
-  //   // fetchDashboardStats();
-  //   _refreshData();
-  //   fetchPendingTrips();
-  //
-  //   _pollingTimer = Timer.periodic(const Duration(seconds:10), (timer)
-  //   {
-  //     if (mounted){
-  //       fetchUsers();
-  //       fetchPendingTrips();
-  //       // fetchDashboardStats();
-  //     }
-  //   }
-  //   );
-  // }
+  double totalRevenue = 0;
 
   @override
   void initState() {
@@ -162,16 +112,37 @@ class _AdminScreenState extends State<AdminScreen> {
       if (type == 'location') {
         _updateDriverMarker(event);
       }
+// ---------------- EMERGENCY ----------------
+      if (type == 'admin_emergency_alert') {
+
+      debugPrint("🚨 EMERGENCY EVENT RECEIVED");
+
+      _showEmergencyPopup(event);
+      }
+
+      if (type == 'new_feedback') {
+        fetchFeedback();
+        Fluttertoast.showToast(
+          msg: "New feedback from ${event['userName'] ?? 'a user'}",
+          backgroundColor: Colors.blue,
+        );
+      }
+
     });
 
     fetchUsers();
     _refreshData();
+    fetchDashboardStats();
     fetchPendingTrips();
+    fetchFeedback();
+    fetchRatings();
 
     _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+
       if (mounted) {
         fetchUsers();
         fetchPendingTrips();
+        fetchDashboardStats(); // <-- refresh counts
       }
     });
   }
@@ -204,14 +175,21 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _refreshData() async {
     await Future.wait([
       fetchUsers(),
-      // fetchFeedback(),
-      // fetchDashboardStats(),
+      fetchFeedback(),
+      fetchDashboardStats(),
       fetchPendingTrips(),
     ]);
   }
 
 // Update inside _AdminScreenState
-
+  Future<void> fetchRatings() async {
+    try {
+      final ratings = await AdminApiService.fetchRatings();
+      setState(() => ratingsList = ratings);
+    } catch (e) {
+      debugPrint("Ratings fetch failed: $e");
+    }
+  }
   Future<void> fetchPendingTrips() async {
     try {
       // We only want the 'requested' ones for the horizontal list/popups
@@ -275,6 +253,7 @@ class _AdminScreenState extends State<AdminScreen> {
         pendingBookingsCount = stats['pendingBookings'] ?? 0;
         activeRidesCount = stats['activeRides'] ?? 0;
         onlineDriversCount = stats['onlineDrivers'] ?? 0;
+        totalRevenue = (stats['totalRevenue'] ?? 0).toDouble();
         isLoadingDashboard = false;
       });
     } catch (e) {
@@ -379,7 +358,92 @@ class _AdminScreenState extends State<AdminScreen> {
       Fluttertoast.showToast(msg: "Cancellation failed: $e");
     }
   }
+  Future<void> _showEmergencyPopup(Map<String, dynamic> data) async {
+    if (!mounted) return;
 
+    final driver = data['driver'] as Map<String, dynamic>?;
+    final rider = data['rider'] as Map<String, dynamic>?;
+    final triggeredBy = data['triggeredBy'] ?? 'unknown';
+    final person = triggeredBy == 'driver' ? driver : rider;
+
+    final lat = data['lat'];
+    final lng = data['lng'];
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return AlertDialog(
+          backgroundColor: Colors.red.shade900,
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.white, size: 30),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  "EMERGENCY ALERT",
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Triggered by: ${triggeredBy.toString().toUpperCase()}",
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              Text("Message: ${data['message'] ?? 'N/A'}",
+                  style: const TextStyle(color: Colors.white)),
+              const SizedBox(height: 10),
+              if (person != null) ...[
+                Text("Name: ${person['name'] ?? 'Unknown'}",
+                    style: const TextStyle(color: Colors.white)),
+                Text("Phone: ${person['phone'] ?? 'N/A'}",
+                    style: const TextStyle(color: Colors.white)),
+                if (person['carModel'] != null)
+                  Text("Vehicle: ${person['carModel']} (${person['carNumber'] ?? ''})",
+                      style: const TextStyle(color: Colors.white)),
+              ] else
+                const Text("No user profile attached to this alert",
+                    style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 10),
+              if (lat != null && lng != null)
+                Text("Location: $lat, $lng",
+                    style: const TextStyle(color: Colors.white)),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () async {
+                await _emergencyPlayer.stop();
+                _isPopupShowing = false;
+                if (mounted) Navigator.pop(context);
+              },
+              child: const Text("DISMISS"),
+            ),
+            if (person != null && person['phone'] != null)
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
+                onPressed: () async {
+                  final uri = Uri(scheme: 'tel', path: person['phone']);
+                  if (await canLaunchUrl(uri)) await launchUrl(uri);
+                },
+                child: const Text("CALL", style: TextStyle(color: Colors.red)),
+              ),
+          ],
+        );
+      },
+    );
+
+    try {
+      await _emergencyPlayer.setReleaseMode(ReleaseMode.loop);
+      await _emergencyPlayer.play(AssetSource('sounds/alert.mp3'));
+    } catch (e) {
+      debugPrint("❌ AUDIO ERROR: $e");
+    }
+  }
   void _showDispatchDialog(String tripId) {
     // FIND the trip data from your local list to pass into the screen
     final tripData = pendingTrips.firstWhere((t) => t['_id'] == tripId, orElse: () => null);
@@ -470,43 +534,111 @@ class _AdminScreenState extends State<AdminScreen> {
     String csv = const ListToCsvConverter().convert(rows);
     Fluttertoast.showToast(msg: 'CSV Generated. Copy and paste:\n$csv');
   }
-// This goes inside your _AdminScreenState
-  Widget _buildSquareCard({
+
+  Widget _buildPremiumCard({
     required String title,
     required String value,
-    required Color color,
+    required IconData icon,
+    required List<Color> gradient,
     required VoidCallback onTap,
   }) {
-    return InkWell( // Use InkWell for better touch feedback
+    return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
+      borderRadius: BorderRadius.circular(24),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B), // Consistent dark slate
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.5), width: 1),
+          gradient: LinearGradient(
+            colors: gradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: gradient.last.withOpacity(.35),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
-        padding: const EdgeInsets.all(12),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.analytics_outlined, color: color, size: 20),
-            const SizedBox(height: 8),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(.12),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.white70,
+                  size: 16,
+                )
+
+              ],
+            ),
+
+            const Spacer(),
+
             Text(
               value,
-              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 30,
+                fontWeight: FontWeight.bold,
+              ),
             ),
+
+            const SizedBox(height: 5),
+
             Text(
               title,
-              style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
-              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+              ),
             ),
+
+            const SizedBox(height: 10),
+
+            Container(
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: FractionallySizedBox(
+                widthFactor: .75,
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            )
+
           ],
         ),
       ),
     );
   }
-
 
   /// Navigation card to feedback screen
   Widget feedbackNavigationCard() {
@@ -527,6 +659,78 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
+  Widget _buildAnalyticsCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white10,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.25),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: color.withOpacity(.15),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 28,
+            ),
+          ),
+
+          const SizedBox(width: 16),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 13,
+                  ),
+                ),
+
+                const SizedBox(height: 6),
+
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 24,
+                  ),
+                ),
+
+              ],
+            ),
+          ),
+
+        ],
+      ),
+    );
+  }
   @override
   Widget build(BuildContext context) {
     final totalUsers = users.length;
@@ -535,112 +739,279 @@ class _AdminScreenState extends State<AdminScreen> {
     final blockedUsers = users.where((u) => u.isBlocked).length;
     final pendingBookingsCount = pendingTrips.length;
     return Scaffold(
-      backgroundColor: const Color(0xFF0A2647),
-      appBar: AppBar(
-        backgroundColor: Colors.red,
-        title: const Text('Admin Dashboard'),
-        centerTitle: true,
-        actions: [
-          IconButton(onPressed: _refreshData, icon: const Icon(Icons.refresh))
-        ],
-      ),
-      body: ListView(
+      backgroundColor: AdminColors.background,
+      body: SafeArea(
+        child: ListView(
         children: [
+          const DashboardHeader(),
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
+              crossAxisCount: MediaQuery.of(context).size.width > 900 ? 4 : 2,              shrinkWrap: true,
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
               physics: const NeverScrollableScrollPhysics(),
 
               children: [
-                _buildSquareCard(
+
+                _buildPremiumCard(
                   title: 'Total Users',
                   value: '$totalUsers',
-                  color: Colors.blue,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UserListScreen())),
+                  icon: Icons.people_alt_rounded,
+                  gradient: const [
+                    Color(0xFF3B82F6),
+                    Color(0xFF1D4ED8),
+                  ],
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const UserListScreen()),
+                  ),
                 ),
-                _buildSquareCard(
+
+                _buildPremiumCard(
                   title: 'Active Drivers',
                   value: '$activeDrivers',
-                  color: Colors.green,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DriverListScreen())),
+                  icon: Icons.local_taxi,
+                  gradient: const [
+                    Color(0xFF10B981),
+                    Color(0xFF059669),
+                  ],
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const DriverListScreen()),
+                  ),
                 ),
-                _buildSquareCard(
+
+                _buildPremiumCard(
                   title: 'Active Passengers',
                   value: '$activePassengers',
-                  color: Colors.orange,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PassengerListScreen())),
+                  icon: Icons.person,
+                  gradient: const [
+                    Color(0xFFF59E0B),
+                    Color(0xFFD97706),
+                  ],
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const PassengerListScreen()),
+                  ),
                 ),
-                _buildSquareCard(
+
+                _buildPremiumCard(
                   title: 'Blocked Users',
                   value: '$blockedUsers',
-                  color: Colors.red,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BlockedUserListScreen())),
+                  icon: Icons.block,
+                  gradient: const [
+                    Color(0xFFEF4444),
+                    Color(0xFFDC2626),
+                  ],
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BlockedUserListScreen()),
+                  ),
                 ),
-                _buildSquareCard(
-                  title: 'User Feedback',
-                  value: '${feedbackList.length}',
-                  color: Colors.orange, // You can customize this color
-                  onTap: () => Navigator.pushNamed(context, '/feedback'),
-                ),
-                _buildSquareCard(
+
+                _buildPremiumCard(
                   title: 'Pending Bookings',
                   value: '$pendingBookingsCount',
-                  color: Colors.purple,
+                  icon: Icons.pending_actions,
+                  gradient: const [
+                    Color(0xFF8B5CF6),
+                    Color(0xFF7C3AED),
+                  ],
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const PendingBookingsScreen()),
                   ),
                 ),
-
-                _buildSquareCard(
+                _buildPremiumCard(
+                  title: 'Total Revenue',
+                  value: 'KES ${totalRevenue.toStringAsFixed(0)}',
+                  icon: Icons.payments,
+                  gradient: const [
+                    Color(0xFF16A34A),
+                    Color(0xFF15803D),
+                  ],
+                  onTap: () {
+                    // Optional: navigate to a detailed revenue/reports screen later
+                  },
+                ),
+                _buildPremiumCard(
                   title: 'Active Rides',
                   value: '$activeRidesCount',
-                  color: Colors.teal,
+                  icon: Icons.route,
+                  gradient: const [
+                    Color(0xFF14B8A6),
+                    Color(0xFF0F766E),
+                  ],
                   onTap: () {
                     Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const ActiveRidesScreen())
-                    ).then((_) => _refreshData()); // Refresh stats when you come back
+                      context,
+                      MaterialPageRoute(builder: (_) => const ActiveRidesScreen()),
+                    ).then((_) => _refreshData());
                   },
                 ),
 
-                _buildSquareCard(
+                _buildPremiumCard(
                   title: 'Online Drivers',
                   value: '$onlineDriversCount',
-                  color: Colors.greenAccent,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DriverListScreen())),
+                  icon: Icons.location_on,
+                  gradient: const [
+                    Color(0xFF22C55E),
+                    Color(0xFF15803D),
+                  ],
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const DriverListScreen()),
+                  ),
                 ),
+
+                _buildPremiumCard(
+                  title: 'User Feedback',
+                  value: '${feedbackList.length}',
+                  icon: Icons.feedback,
+                  gradient: const [
+                    Color(0xFFF97316),
+                    Color(0xFFEA580C),
+                  ],
+                  onTap: () => Navigator.pushNamed(context, '/feedback'),
+                ),
+
+                _buildPremiumCard(
+                  title: 'Driver Ratings',
+                  value: '${ratingsList.length}',
+                  icon: Icons.star,
+                  gradient: const [
+                    Color(0xFFEAB308),
+                    Color(0xFFCA8A04),
+                  ],
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const RatingsScreen()),
+                  ),
+                ),
+
 
               ],
             ),
           ),
-          // 2. LIVE MAP – add it here (right after stats)
-          // 2. LIVE MAP – add it here (right after stats)
+
           Container(
-            height: 350,
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8)],
+              color: const Color(0xFF111827),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(.25),
+                  blurRadius: 18,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
-            clipBehavior: Clip.hardEdge,
-            child: GoogleMap(
-              initialCameraPosition: const CameraPosition(
-                target: LatLng(-1.2921, 36.8219), // Nairobi center
-                zoom: 12,
-              ),
-              // --- UPDATE ONLY THE LINE BELOW ---
-              markers: Set<Marker>.of(_driverMarkers.values),
-              // ----------------------------------
-              myLocationEnabled: false,
-              zoomControlsEnabled: false,
-              onMapCreated: (GoogleMapController controller) {
-                // Optional: controller.setMapStyle(mapStyle);
-              },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+                  child: Row(
+                    children: [
+
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.location_on,
+                          color: Colors.green,
+                        ),
+                      ),
+
+                      const SizedBox(width: 14),
+
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+
+                            Text(
+                              "Live Fleet Map",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 19,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+
+                            SizedBox(height: 4),
+
+                            Text(
+                              "Real-time Sizemore driver locations",
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 13,
+                              ),
+                            ),
+
+                          ],
+                        ),
+                      ),
+
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(.15),
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(
+                              Icons.circle,
+                              color: Colors.green,
+                              size: 10,
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              "LIVE",
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+
+                    ],
+                  ),
+                ),
+
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(24),
+                  ),
+                  child: SizedBox(
+                    height: 320,
+                    child: GoogleMap(
+                      initialCameraPosition: const CameraPosition(
+                        target: LatLng(-1.2921, 36.8219),
+                        zoom: 12,
+                      ),
+                      markers: Set<Marker>.of(_driverMarkers.values),
+                      myLocationEnabled: false,
+                      zoomControlsEnabled: false,
+                      compassEnabled: false,
+                      mapToolbarEnabled: false,
+                    ),
+                  ),
+                ),
+
+              ],
             ),
           ),
 
@@ -649,19 +1020,56 @@ class _AdminScreenState extends State<AdminScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  "Pending Bookings",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
+
+                Row(
+                  children: [
+
+                    const Icon(
+                      Icons.pending_actions,
+                      color: Colors.orange,
+                      size: 24,
+                    ),
+
+                    const SizedBox(width: 10),
+
+                    const Text(
+                      "Pending Ride Requests",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const Spacer(),
+
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(.15),
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Text(
+                        "$pendingBookingsCount Waiting",
+                        style: const TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    )
+
+                  ],
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
-                  height: 200, // Slightly taller to accommodate content
+                  height: 200,
                   child: isLoadingTrips
-                      ? const Center(child: CircularProgressIndicator(color: Colors.red))
+                      ? const Center(
+                    child: CircularProgressIndicator(color: Colors.red),
+                  )
                       : pendingTrips.isEmpty
                       ? const Center(
                     child: Text(
@@ -679,117 +1087,227 @@ class _AdminScreenState extends State<AdminScreen> {
                       final vehicle = trip['vehicleType'] ?? 'Standard';
                       final tripId = trip['_id'];
 
-                      return Card(
-                        margin: const EdgeInsets.only(right: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                      return Container(
+                        width: 320,
+                        margin: const EdgeInsets.only(right: 18),
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF111827),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: Colors.white10),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(.25),
+                              blurRadius: 18,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
                         ),
-                        child: Container(
-                          width: 280,
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.withOpacity(.15),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
                                     vehicle.toString().toUpperCase(),
                                     style: const TextStyle(
+                                      color: Colors.green,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.red,
-                                      fontSize: 12,
+                                      fontSize: 11,
                                     ),
                                   ),
-                                  const Icon(Icons.notifications_active, size: 16, color: Colors.orange),
-                                ],
+                                ),
+                                const Spacer(),
+                                const Icon(
+                                  Icons.timer,
+                                  color: Colors.orange,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 18),
+
+                            const Text(
+                              "Passenger",
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                "Rider: $riderName",
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                                overflow: TextOverflow.ellipsis,
+                            ),
+
+                            const SizedBox(height: 6),
+
+                            Text(
+                              riderName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 19,
+                                fontWeight: FontWeight.bold,
                               ),
-                              Text(
-                                "Fare: KES $fare",
-                                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                              ),
-                              const Spacer(),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  TextButton(
-                                    onPressed: () => _handleCancel(tripId),
-                                    child: const Text("Reject", style: TextStyle(color: Colors.red)),
+                            ),
+
+                            const SizedBox(height: 18),
+
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.payments,
+                                  color: Colors.green,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  "KES $fare",
+                                  style: const TextStyle(
+                                    color: Colors.green,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
                                   ),
-                                  const SizedBox(width: 8),
+                                ),
+                              ],
+                            ),
 
-                                  // ElevatedButton(
-                                  //   onPressed: () async {
-                                  //     // 1. Accept first — this notifies the rider
-                                  //     await AdminApiService.acceptTrip(trip['_id']);
-                                  //
-                                  //     // 2. Then open dispatch screen
-                                  //     Navigator.push(
-                                  //       context,
-                                  //       MaterialPageRoute(
-                                  //         builder: (context) => DispatchManagementScreen(
-                                  //           tripId: trip['_id'],
-                                  //           rideData: trip,
-                                  //         ),
-                                  //       ),
-                                  //     ).then((_) => _refreshData());
-                                  //   },
-                                  //   style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                                  //   child: const Text("Dispatch"),
-                                  // ),
+                            const Spacer(),
 
-                                  ElevatedButton(
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _handleCancel(tripId),
+                                    icon: const Icon(Icons.close),
+                                    label: const Text("Reject"),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                      side: const BorderSide(color: Colors.red),
+                                      padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
+                                const SizedBox(width: 12),
+
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(Icons.local_taxi),
+                                    label: const Text("Dispatch"),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green,
+                                      padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
                                     onPressed: () async {
                                       try {
-                                        // ✅ STEP 1: Accept first — moves status: requested → accepted
-                                        await AdminApiService.acceptTrip(trip['_id']);
+                                        await AdminApiService.acceptTrip(tripId);
 
                                         if (!mounted) return;
 
-                                        // ✅ STEP 2: Now open dispatch — assignTrip will find status: "accepted"
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
-                                            builder: (context) => DispatchManagementScreen(
-                                              tripId: trip['_id'],
-                                              rideData: trip,
-                                            ),
+                                            builder: (_) =>
+                                                DispatchManagementScreen(
+                                                  tripId: tripId,
+                                                  rideData: trip,
+                                                ),
                                           ),
                                         ).then((_) => _refreshData());
-
                                       } catch (e) {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
-                                            content: Text("Failed to accept ride: $e"),
                                             backgroundColor: Colors.red,
+                                            content: Text(e.toString()),
                                           ),
                                         );
                                       }
                                     },
-                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                                    child: const Text("Dispatch"),
                                   ),
-
-                                ],
-                              ),
-                            ],
-                          ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       );
                     },
                   ),
                 ),
-              ],
+
+                const SizedBox(height: 20),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: const Text(
+                    "Live Operations",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount:
+                    MediaQuery.of(context).size.width > 900 ? 4 : 2,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 2.3,
+                    children: [
+                      _buildAnalyticsCard(
+                        icon: Icons.local_taxi,
+                        title: "Online Drivers",
+                        value: "$onlineDriversCount",
+                        color: Colors.green,
+                      ),
+                      _buildAnalyticsCard(
+                        icon: Icons.route,
+                        title: "Active Trips",
+                        value: "$activeRidesCount",
+                        color: Colors.blue,
+                      ),
+                      _buildAnalyticsCard(
+                        icon: Icons.pending_actions,
+                        title: "Pending Requests",
+                        value: "$pendingBookingsCount",
+                        color: Colors.orange,
+                      ),
+                      _buildAnalyticsCard(
+                        icon: Icons.people,
+                        title: "Passengers",
+                        value: "$activePassengers",
+                        color: Colors.purple,
+                      ),
+                    ],
+                  ),
+                ),              ],
             ),
           ),
           // buildFeedbackSection(),
         ],
+        ),
+
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.red,

@@ -835,10 +835,28 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           icon: Icons.lock,
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChangePasswordScreen())),
         ),
+        // _SettingsTile(
+        //   title: 'Help & Support',
+        //   icon: Icons.help_outline,
+        //   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HelpSupportScreen())),
+        // ),
+        //
+
         _SettingsTile(
           title: 'Help & Support',
           icon: Icons.help_outline,
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HelpSupportScreen())),
+          onTap: () {
+            final tripId = _activeTripData?['tripId'] ?? _activeTripData?['_id'];
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => HelpSupportScreen(
+                  role: 'driver',
+                  tripId: tripId?.toString(),
+                ),
+              ),
+            );
+          },
         ),
         _SettingsTile(
           title: 'Privacy Policy',

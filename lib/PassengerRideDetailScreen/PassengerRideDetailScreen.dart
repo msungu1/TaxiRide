@@ -10,6 +10,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:sizemore_taxi/ProfileScreen/ProfileScreen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../FeedbackScreen/LeaveFeedbackScreen.dart';
 
 class PassengerRideDetailScreen extends StatefulWidget {
   final Map<String, dynamic> rideData;
@@ -31,7 +33,7 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
   Timer? _safetyStatusTimer;
   String _currentStatusMessage = "Driver is on the way";
   final AudioPlayer _audioPlayer = AudioPlayer();
-
+  String? _lastFittedStage;
   final String apiKey = "AIzaSyDraWkg1uWEzstuOOIsWWedooG6Xq-RctM";
   LatLng _driverLocation = const LatLng(0, 0);
   LatLng _pickupLocation = const LatLng(0, 0);
@@ -40,6 +42,15 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
   bool _arrivalHandled = false;
   bool _tripStartedHandled = false;
   bool _tripCompletedHandled = false;
+  double _driverBearing = 0;
+  int _routeRequestId = 0;
+  DateTime? _lastRouteFetchTime;
+  String? _lastRouteStage;
+  bool _hasFetchedRouteOnce = false; // ✅ guarantees the first route always fetches
+  int _selectedRating = 0;
+  bool _isSubmittingRating = false;
+  bool _ratingSubmitted = false;
+  // Timer? _redirectTimer;
 
   @override
   void initState() {
@@ -72,12 +83,22 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
       final type = data['type']?.toString();
       final rawStatus = (data['status'] ?? (data['trip'] != null ? data['trip']['status'] : null))?.toString().toLowerCase();
 
-      // ================= 1. LIVE GPS MAP COORDINATION =================
       if (data['lat'] != null && data['lng'] != null) {
         final newPos = LatLng(
           double.parse(data['lat'].toString()),
           double.parse(data['lng'].toString()),
         );
+
+        if (_lastAnimatedDriverPosition != null &&
+            (_lastAnimatedDriverPosition!.latitude != newPos.latitude ||
+                _lastAnimatedDriverPosition!.longitude != newPos.longitude)) {
+          _driverBearing = Geolocator.bearingBetween(
+            _lastAnimatedDriverPosition!.latitude,
+            _lastAnimatedDriverPosition!.longitude,
+            newPos.latitude,
+            newPos.longitude,
+          );
+        }
 
         _driverLocation = newPos;
         _loadPolylineRoute();
@@ -299,6 +320,76 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
               ),
               const SizedBox(height: 18),
 
+              StatefulBuilder(
+                builder: (context, setDialogState) {
+                  return Column(
+                    children: [
+                      const Divider(color: Colors.white24),
+                      const SizedBox(height: 10),
+
+                      if (!_ratingSubmitted) ...[
+                        const Text(
+                          "Rate your driver",
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(5, (index) {
+                            final starIndex = index + 1;
+                            return IconButton(
+                              icon: Icon(
+                                starIndex <= _selectedRating ? Icons.star : Icons.star_border,
+                                color: const Color(0xFFFFD60A),
+                                size: 32,
+                              ),
+                              onPressed: _isSubmittingRating
+                                  ? null
+                                  : () {
+                                setDialogState(() => _selectedRating = starIndex);
+                                setState(() => _selectedRating = starIndex);
+                              },
+                            );
+                          }),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFFD60A),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: _selectedRating == 0 || _isSubmittingRating
+                                ? null
+                                : () async {
+                              await _submitRating();
+                              setDialogState(() {});
+                            },
+                            child: _isSubmittingRating
+                                ? const SizedBox(
+                              height: 18, width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                            )
+                                : const Text(
+                              "Submit Rating",
+                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ] else
+                        const Text(
+                          "✅ Thanks for rating your driver!",
+                          style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold),
+                        ),
+
+                      const SizedBox(height: 16),
+                    ],
+                  );
+                },
+              ),
+
+
               const Center(
                 child: Text(
                   "Thanks for choosing Sizemore 💛",
@@ -318,7 +409,7 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
     );
 
 
-    Future.delayed(const Duration(seconds: 8), () async {
+    Future.delayed(const Duration(seconds: 15), () async {
       debugPrint("🚀 TIMER FIRED - bypassing mounted check");
 
       final nav = SocketService.instance.navigatorKey?.currentState;
@@ -339,9 +430,22 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
     });
 
   }
+
   void _initializeLocations() {
-    final pickup = localRideData['pickupLocation'];
-    final dropoff = localRideData['dropoffLocation'];
+    final pickup = localRideData['pickupLocation'] ?? localRideData['pickup'];
+    final dropoff = localRideData['dropoffLocation'] ?? localRideData['dropoff'];
+
+    // ✅ Seed trip stage from the data we were actually handed, instead of
+    // always assuming 'accepted'. This is what was causing the polyline to
+    // draw the wrong leg (or nothing at all) when this screen opens mid-trip.
+    final initialStatus = (localRideData['status'] ??
+        (localRideData['trip'] != null ? localRideData['trip']['status'] : null))
+        ?.toString()
+        .toLowerCase();
+    if (initialStatus != null && initialStatus.isNotEmpty) {
+      _tripStage = initialStatus;
+      _currentStatusMessage = _parseStatus(initialStatus);
+    }
 
     if (pickup != null) {
       _pickupLocation = LatLng(
@@ -395,7 +499,62 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
       debugPrint("Audio error: $e");
     }
   }
+  Future<void> _submitRating() async {
+    if (_selectedRating == 0 || _ratingSubmitted) return;
 
+    if (!mounted) return;
+    setState(() => _isSubmittingRating = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      debugPrint("🔑 Token value being sent: '$token'");   // 👈 add it right here
+      if (token == null) {
+        debugPrint("❌ No auth token found, cannot submit rating");
+        if (mounted) setState(() => _isSubmittingRating = false);
+        return;
+      }
+
+      final tripId = (localRideData['tripId'] ?? localRideData['_id'])?.toString();
+
+      debugPrint("📤 Submitting rating: tripId=$tripId, stars=$_selectedRating");
+
+      final response = await http.post(
+        Uri.parse('https://sizemoretaxi-itpj.onrender.com/api/ratings'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'tripId': tripId,
+          'stars': _selectedRating,
+        }),
+      );
+
+      debugPrint("📡 Rating response ${response.statusCode}: ${response.body}");
+
+      if (!mounted) return;
+
+      if (response.statusCode == 201) {
+        setState(() {
+          _ratingSubmitted = true;
+          _isSubmittingRating = false;
+        });
+      } else {
+        // 👇 REPLACE THIS BLOCK
+        debugPrint("Rating submit failed: ${response.statusCode} ${response.body}");
+        if (mounted) {
+          setState(() => _isSubmittingRating = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Failed to submit rating: ${response.statusCode}")),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ Rating submit error: $e");
+      if (mounted) setState(() => _isSubmittingRating = false);
+    }
+  }
   Widget _summaryRow(String title, String value) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -421,6 +580,31 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
       destination = _dropoffLocation;
     }
 
+    // 🕒 THROTTLE — but always allow through immediately on a stage change
+    final now = DateTime.now();
+    final stageChanged = _lastRouteStage != _tripStage;
+    if (!stageChanged &&
+        _lastRouteFetchTime != null &&
+        now.difference(_lastRouteFetchTime!) < const Duration(seconds: 3)) {
+      return;
+    }
+
+    // 🛑 SKIP degenerate routes (origin ≈ destination) — but never skip the
+    // very first fetch, otherwise the polyline can stay empty forever if the
+    // driver's GPS hasn't pinged yet (driver location defaults to pickup).
+    final gapMeters = Geolocator.distanceBetween(
+      origin.latitude, origin.longitude,
+      destination.latitude, destination.longitude,
+    );
+    if (gapMeters < 30 && _hasFetchedRouteOnce) return;
+
+    // ✅ Only now, right before actually firing the request, do we stamp the throttle
+    _lastRouteFetchTime = now;
+    _lastRouteStage = _tripStage;
+    _hasFetchedRouteOnce = true;
+
+    final int requestId = ++_routeRequestId;
+
     final url = "https://maps.googleapis.com/maps/api/directions/json"
         "?origin=${origin.latitude},${origin.longitude}"
         "&destination=${destination.latitude},${destination.longitude}"
@@ -430,20 +614,38 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
       final response = await http.get(Uri.parse(url));
       final data = jsonDecode(response.body);
 
-      if (data["routes"] == null || data["routes"].isEmpty) return;
+      if (requestId != _routeRequestId) return;
+
+      debugPrint("🗺️ Directions API status: ${data['status']}");
+      if (data['status'] != 'OK') {
+        debugPrint("🗺️ Directions API error_message: ${data['error_message']}");
+        return;
+      }
+
+      if (data["routes"] == null || data["routes"].isEmpty) {
+        debugPrint("🗺️ No routes returned for $origin -> $destination");
+        return;
+      }
 
       final points = data["routes"][0]["overview_polyline"]["points"];
       final decodedPoints = PolylinePoints.decodePolyline(points);
-      final polylineCoordinates = decodedPoints.map((e) => LatLng(e.latitude, e.longitude)).toList();
+      final polylineCoordinates =
+      decodedPoints.map((e) => LatLng(e.latitude, e.longitude)).toList();
 
+      if (polylineCoordinates.length < 2) return;
+
+      if (!mounted) return;
       setState(() {
         _polylines = {
           Polyline(
             polylineId: const PolylineId("trip_route"),
             points: polylineCoordinates,
-            width: 6,
-            color: Colors.blue,
-            geodesic: true,
+            width: 5,
+            color: const Color(0xFFFFD60A),
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
+            jointType: JointType.round,
+            zIndex: 1,
           ),
         };
       });
@@ -453,9 +655,58 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
       debugPrint("❌ Polyline processing error: $e");
     }
   }
+  Set<Marker> get _visibleMarkers {
+    final markers = <Marker>{};
 
+    final showDriver = _tripStage == 'accepted' ||
+        _tripStage == 'arrived' ||
+        _tripStage == 'in_progress' ||
+        _tripStage == 'started';
+
+    final showPickup = _tripStage == 'accepted' ||
+        _tripStage == 'arrived' ||
+        _tripStage == 'completed';
+
+    final showDropoff = _tripStage == 'in_progress' ||
+        _tripStage == 'started' ||
+        _tripStage == 'completed';
+
+    if (showDriver) {
+      markers.add(Marker(
+        markerId: const MarkerId('driver_car'),
+        position: _driverLocation,
+        flat: true,
+        anchor: const Offset(0.5, 0.5),
+        rotation: _driverBearing,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow),
+        zIndex: 2,
+      ));
+    }
+
+    if (showPickup) {
+      markers.add(Marker(
+        markerId: const MarkerId('pickup_point'),
+        position: _pickupLocation,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: const InfoWindow(title: 'Pickup'),
+      ));
+    }
+
+    if (showDropoff) {
+      markers.add(Marker(
+        markerId: const MarkerId('dropoff_point'),
+        position: _dropoffLocation,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: const InfoWindow(title: 'Destination'),
+      ));
+    }
+
+    return markers;
+  }
   void _zoomToFitDynamicRoute(LatLng origin, LatLng destination) {
     if (_mapController == null) return;
+    if (_lastFittedStage == _tripStage) return; // already fitted for this stage
+    _lastFittedStage = _tripStage;
 
     LatLngBounds bounds = LatLngBounds(
       southwest: LatLng(
@@ -468,9 +719,11 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
       ),
     );
 
-    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+    // Bottom sheet covers ~260px, status pill covers ~70px — pad generously
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(bounds, 100),
+    );
   }
-
   @override
   void dispose() {
     _rideSubscription?.cancel();
@@ -503,25 +756,7 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
             mapToolbarEnabled: false,
             zoomControlsEnabled: false,
             polylines: _polylines,
-            markers: {
-              Marker(
-                markerId: const MarkerId('driver_car'),
-                position: _driverLocation,
-                flat: true,
-                anchor: const Offset(0.5, 0.5),
-                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow),
-              ),
-              Marker(
-                markerId: const MarkerId('pickup_point'),
-                position: _pickupLocation,
-                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-              ),
-              Marker(
-                markerId: const MarkerId('dropoff_point'),
-                position: _dropoffLocation,
-                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-              ),
-            },
+            markers: _visibleMarkers,
           ),
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
@@ -629,7 +864,37 @@ class _PassengerRideDetailScreenState extends State<PassengerRideDetailScreen> {
                       )
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: brandYellow,
+                        side: const BorderSide(color: brandYellow),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () {
+                        final tripId = (localRideData['tripId'] ?? localRideData['_id'])?.toString();
+                        final driverId = (driver['id'] ?? driver['_id'])?.toString();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => LeaveFeedbackScreen(
+                              tripId: tripId,
+                              driverId: driverId,
+                              driverName: driver['name'],
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.feedback_outlined),
+                      label: const Text("Leave Feedback"),
+                    ),
+                  ),
                 ],
+
+
               ),
             ),
           ),

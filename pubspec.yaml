@@ -61,7 +61,6 @@ dependencies:
   flutter_polyline_points: ^3.1.0   # or latest from pub.dev
   image_picker: ^1.1.2          # check latest version on pub.dev
   audioplayers: ^6.0.0
-#  flutter_svg: ^2.0.7  # ← Moved here ✅
 
 
 dev_dependencies:

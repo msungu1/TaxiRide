@@ -150,7 +150,17 @@ class _MyAppState extends State<MyApp> {
 
       // We initialize with 0.0, 0.0. The DriverProfileScreen will update this
       // with real GPS coordinates as soon as it builds.
-      SocketService.instance.init(userId: userId, lat: -1.2633, lng: 36.8087);
+      // ✅ FIX: pass the saved role through — previously this always fell back
+      // to init()'s default of 'driver', so rider accounts briefly connected
+      // to the socket server as a driver (emitting go_online, joining driver
+      // rooms) before anything corrected it. That caused spurious duplicate
+      // events / room churn on the rider side.
+      SocketService.instance.init(
+        userId: userId,
+        lat: -1.2633,
+        lng: 36.8087,
+        role: role ?? 'rider',
+      );
     }
   }
 
@@ -172,7 +182,17 @@ class _MyAppState extends State<MyApp> {
         '/profile': (context) => const ProfileScreen(),
         '/onetime': (context) => const OnetimeScreen(),
         '/adminuser': (context) => AdminScreen(),
-        '/emergency': (context) => const EmergencyContactScreen(),
+        // '/emergency': (context) => const EmergencyContactScreen(),
+        '/emergency': (context) {
+          final args = ModalRoute.of(context)!.settings.arguments
+          as Map<String, dynamic>? ?? {};
+          return EmergencyContactScreen(
+            tripId: args['tripId'] ?? 'unknown',
+            triggeredBy: args['triggeredBy'] ?? 'rider',
+            lat: args['lat'] as double?,
+            lng: args['lng'] as double?,
+          );
+        },
         '/requestride': (context) => const RequestRideScreen(),
         '/newride': (context) => const NewRideScreen(),
         '/ridestarted': (context) => const RideStartedScreen(),
@@ -184,15 +204,23 @@ class _MyAppState extends State<MyApp> {
         '/termsandcondition': (context) => const TermsAndConditionsScreen(),
         '/feedback': (context) => const FeedbackScreen(),
         '/rider': (context) => const ProfileScreen(),
-        '/help': (context) => const HelpSupportScreen(),
+        // '/help': (context) => const HelpSupportScreen(),
+        '/help': (context) {
+          final args = ModalRoute.of(context)!.settings.arguments
+          as Map<String, dynamic>? ?? {};
+          return HelpSupportScreen(
+            tripId: args['tripId'] as String?,
+            role: args['role'] ?? 'rider',
+          );
+        },
         '/privacy': (context) => const PrivacyPolicyScreen(),
         '/driver': (context) => const DriverListScreen(),
         '/driverscreen': (context) => const DriverProfileScreen(),
         '/otpVerification': (context) {
           final args =
               ModalRoute.of(context)!.settings.arguments
-                  as Map<String, dynamic>? ??
-              {};
+              as Map<String, dynamic>? ??
+                  {};
           return OtpVerificationScreen(
             userId: args['email'] ?? '',
             role: args['role'] ?? '',
@@ -201,8 +229,8 @@ class _MyAppState extends State<MyApp> {
         '/userdetails': (context) {
           final args =
               ModalRoute.of(context)!.settings.arguments
-                  as Map<String, dynamic>? ??
-              {};
+              as Map<String, dynamic>? ??
+                  {};
           final user = args['user'] as UserModel;
           return UserDetailsScreen(user: user);
         },

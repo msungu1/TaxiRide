@@ -19,7 +19,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
-
+import 'package:sizemore_taxi/main.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,24 +34,6 @@ void main() async {
   );
 }
 
-class ThemeNotifier extends ChangeNotifier {
-  bool _isDarkMode = false;
-
-  bool get isDarkMode => _isDarkMode;
-
-  ThemeNotifier(bool initialDarkMode) : _isDarkMode = initialDarkMode;
-
-  void toggleTheme(bool isDark) {
-    _isDarkMode = isDark;
-    _saveTheme(isDark);
-    notifyListeners();
-  }
-
-  Future<void> _saveTheme(bool isDark) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('darkMode', isDark);
-  }
-}
 
 class StitchApp extends StatelessWidget {
   const StitchApp({super.key});
@@ -82,10 +64,7 @@ class StitchApp extends StatelessWidget {
 }
 
 class Ride {
-  // final String place;
-  // final String dateTime;
-  // final String fare;
-  // final bool cancelled;
+
   final String id;
   final String place;
   final String dateTime;
@@ -529,9 +508,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: 'Help & Support',
               icon: Icons.help_outline,
               onTap: () {
-                Navigator.push(
+                Navigator.pushNamed(
                   context,
-                  MaterialPageRoute(builder: (context) => const HelpSupportScreen()),
+                  '/help',
+                  arguments: {'role': 'rider'},
                 );
               },
             ),

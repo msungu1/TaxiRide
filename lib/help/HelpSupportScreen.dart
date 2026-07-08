@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:sizemore_taxi/emergency/EmergencyContactScreen.dart'; // 👈 import your EmergencyContactScreen
 
 class HelpSupportScreen extends StatelessWidget {
-  const HelpSupportScreen({super.key});
+  final String? tripId;
+  final String role; // 'rider' or 'driver'
+
+  const HelpSupportScreen({super.key,this.tripId,    required this.role,});
 
   // Your FAQs list
   final List<Map<String, String>> faqs = const [
@@ -23,7 +27,7 @@ class HelpSupportScreen extends StatelessWidget {
 
   // Phone launcher
   void _launchPhone() async {
-    final Uri phoneUri = Uri(scheme: 'tel', path: '+254700000000'); // replace with your number
+    final Uri phoneUri = Uri(scheme: 'tel', path: '+25471380037'); // replace with your number
     if (await canLaunchUrl(phoneUri)) {
       await launchUrl(phoneUri);
     }
@@ -119,13 +123,35 @@ class HelpSupportScreen extends StatelessWidget {
                 color: Colors.white,
               ),
             ),
-            onPressed: () {
+            onPressed: () async {
+              double? lat;
+              double? lng;
+
+              try {
+                final position = await Geolocator.getCurrentPosition(
+                  desiredAccuracy: LocationAccuracy.high,
+                );
+                lat = position.latitude;
+                lng = position.longitude;
+              } catch (e) {
+                debugPrint("Could not fetch location for emergency alert: $e");
+                // proceed without lat/lng rather than blocking the alert
+              }
+
+              if (!context.mounted) return;
+
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const EmergencyContactScreen()),
+                MaterialPageRoute(
+                  builder: (context) => EmergencyContactScreen(
+                    tripId: tripId ?? "unknown",
+                    triggeredBy: role,
+                    lat: lat,
+                    lng: lng,
+                  ),
+                ),
               );
-            },
-          ),
+            },          ),
         ],
       ),
     );

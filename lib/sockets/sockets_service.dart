@@ -56,6 +56,7 @@ class SocketService {
           .setReconnectionDelay(2000)
           .build(),
     );
+    _setupListeners();
 
     _socket!.onConnect((_) {
       debugPrint("✅ Connected as $role");
@@ -71,7 +72,7 @@ class SocketService {
 
       updateLocation(lat, lng);
 
-      _setupListeners();
+      // _setupListeners();
     });
     _socket!.onReconnect((_) {
 
@@ -208,20 +209,6 @@ class SocketService {
       });
     });
 
-    // ===================== COMPLETED =====================
-    // _socket!.on('trip_completed', (data) {
-    //   final tripId = data['tripId'];
-    //
-    //   debugPrint("🏁 trip_completed: $data");
-    //
-    //   if (tripId != null) leaveTripRoom(tripId);
-    //
-    //   _rideUpdateController.add({
-    //     'type': 'trip_completed',
-    //     'status': 'completed',
-    //     ...data,
-    //   });
-    // });
 
 // ===================== COMPLETED =====================
     _socket!.on('trip_completed', (data) {
@@ -249,6 +236,18 @@ class SocketService {
       debugPrint(payload.toString());
 
       _rideUpdateController.add(payload);
+    });
+
+// ===================== EMERGENCY ALERT =====================
+    _socket!.on('admin_emergency_alert', (data) {
+
+      debugPrint("🚨 ADMIN EMERGENCY ALERT");
+      debugPrint(data.toString());
+
+      _rideUpdateController.add({
+        ...Map<String, dynamic>.from(data),
+        'type': 'admin_emergency_alert',
+      });
     });
 
     // ===================== 5. TRIP STARTED =====================
@@ -282,6 +281,14 @@ class SocketService {
 
     _socket!.on('registered', (data) {
       debugPrint(" Server confirmed registration: $data");
+    });
+
+    _socket!.on('new_feedback', (data) {
+      debugPrint("💬 new_feedback: $data");
+      _rideUpdateController.add({
+        'type': 'new_feedback',
+        ...data,
+      });
     });
 
   }

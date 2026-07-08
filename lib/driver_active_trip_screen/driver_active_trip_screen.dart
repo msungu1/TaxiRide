@@ -9,6 +9,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:sizemore_taxi/sockets/sockets_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:audioplayers/audioplayers.dart';
+
 
 class DriverActiveTripScreen extends StatefulWidget {
   final Map tripData;
@@ -37,6 +39,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
   String durationText = "";
   String pickupAddress = "";
   String dropoffAddress = "";
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   double _safeDouble(dynamic value) {
     if (value == null) return 0.0;
@@ -176,7 +179,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
 
     await launchUrl(url, mode: LaunchMode.externalApplication);
   }
-  void _updateDriverLivePosition(Position pos) {
+  Future<void> _updateDriverLivePosition(Position pos) async {
     final newPos = LatLng(pos.latitude, pos.longitude);
 
     setState(() {
@@ -198,10 +201,14 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
     _mapController?.animateCamera(
       CameraUpdate.newLatLng(newPos),
     );
+    final tripId =
+        widget.tripData['_id']?.toString() ??
+            widget.tripData['tripId']?.toString();
 
     SocketService.instance.socket?.emit('driver_location_update', {
       'driverId': widget.tripData['driver']?['_id'] ?? widget.tripData['driver'],
-      'tripId': widget.tripData['_id'],
+      // 'tripId': widget.tripData['_id'],
+      'tripId': tripId,   // ✅ now matches the room actually joined
       'lat': pos.latitude,
       'lng': pos.longitude,
       'heading': pos.heading,
@@ -282,6 +289,21 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
 
               const SizedBox(height: 25),
 
+              // SizedBox(
+              //   width: double.infinity,
+              //   child: ElevatedButton(
+              //     style: ElevatedButton.styleFrom(
+              //       backgroundColor: Colors.green,
+              //       padding: const EdgeInsets.symmetric(vertical: 15),
+              //     ),
+              //     onPressed: () => Navigator.pop(context, true),
+              //
+              //   child: const Text(
+              //       "CONFIRM END TRIP",
+              //       style: TextStyle(fontSize: 16),
+              //     ),
+              //   ),
+              // ),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -289,14 +311,16 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
                     backgroundColor: Colors.green,
                     padding: const EdgeInsets.symmetric(vertical: 15),
                   ),
-                  onPressed: () => Navigator.pop(context, true),
+                  onPressed: () async {
+                    await _playAlertSound();
+                    Navigator.pop(context, true);
+                  },
                   child: const Text(
                     "CONFIRM END TRIP",
                     style: TextStyle(fontSize: 16),
                   ),
                 ),
               ),
-
               const SizedBox(height: 10),
             ],
           ),
@@ -370,7 +394,17 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
     }
   }
 
+  Future<void> _playAlertSound() async {
+    try {
+      await _audioPlayer.stop();
 
+      await _audioPlayer.play(
+        AssetSource('sounds/driver.mp3'),
+      );
+    } catch (e) {
+      debugPrint("Audio error: $e");
+    }
+  }
   Future<String> _getAddress(double lat, double lng) async {
     try {
       List<Placemark> placemarks = await placemarkFromCoordinates(lat, lng);
@@ -419,6 +453,7 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
   }
   @override
   void dispose() {
+    _audioPlayer.dispose();
     _positionStream?.cancel();
     super.dispose();
   }
@@ -508,13 +543,27 @@ class _DriverActiveTripScreenState extends State<DriverActiveTripScreen> {
 
                   const SizedBox(height: 10),
 
+    //               SizedBox(
+    //                 width: double.infinity,
+    //                 child: ElevatedButton(
+    //
+    // style: ElevatedButton.styleFrom(
+    //                     backgroundColor: Colors.red,
+    //                   ),
+    //                   onPressed: _endTrip,
+    //                   child: const Text("END TRIP"),
+    //                 ),
+    //               ),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                       ),
-                      onPressed: _endTrip,
+                      onPressed: () async {
+                        await _playAlertSound();
+                        await _endTrip();
+                      },
                       child: const Text("END TRIP"),
                     ),
                   ),

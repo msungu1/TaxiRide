@@ -7,13 +7,13 @@ import 'package:sizemore_taxi/usermodel/UserModel.dart';
 import 'package:sizemore_taxi/reportmodel/ReportModel.dart';
 import 'package:sizemore_taxi/feedbackmodel/FeedbackModel.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Ensure this is imported
+import 'package:sizemore_taxi/RatingModel.dart';
 
 class AdminApiService {
 
   static const String baseUrl = 'https://sizemoretaxi-itpj.onrender.com';
   static const String _tokenKey = 'adminToken';
   static const Duration _timeout = Duration(seconds: 15);
-
   // --- Token Management ---
   static Future<void> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
@@ -81,15 +81,7 @@ class AdminApiService {
     );
     if (response.statusCode != 200) throw _handleError(response);
   }
-  // In AdminApiService
-  // static Future<void> acceptTrip(String tripId) async {
-  //   final response = await http.post(
-  //     Uri.parse('$baseUrl/api/trips/accept'),
-  //     headers: {'Content-Type': 'application/json'},
-  //     body: jsonEncode({'tripId': tripId}),
-  //   );
-  //   if (response.statusCode != 200) throw Exception("Failed to accept trip");
-  // }
+
 
   static Future<void> acceptTrip(String tripId) async {
     final response = await _securedRequest(
@@ -115,7 +107,7 @@ class AdminApiService {
 
   static Future<void> updateUser(String userId, Map<String, dynamic> updatedData) async {
     final response = await _securedRequest(
-      method: 'PUT',
+      method: 'PATCH',
       path: 'users/$userId',
       body: updatedData,
     );
@@ -149,7 +141,11 @@ class AdminApiService {
   }
 
   static Future<List<FeedbackModel>> fetchFeedback() async {
-    final response = await _securedRequest(method: 'GET', path: 'feedback');
+    final response = await _securedRequest(
+      method: 'GET',
+      path: '',
+      overrideBasePath: '/api/feedback/',
+    );
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final List list = data is List ? data : (data['data'] ?? data['feedback'] ?? []);
@@ -160,8 +156,27 @@ class AdminApiService {
   }
 
   static Future<void> markFeedbackHandled(String feedbackId) async {
-    final response = await _securedRequest(method: 'PUT', path: 'feedback/$feedbackId/handle');
+    final response = await _securedRequest(
+      method: 'PATCH',
+      path: '$feedbackId/handle',
+      overrideBasePath: '/api/feedback/',
+    );
     if (response.statusCode != 200) throw _handleError(response);
+  }
+
+  static Future<List<RatingModel>> fetchRatings() async {
+    final response = await _securedRequest(
+      method: 'GET',
+      path: '',
+      overrideBasePath: '/api/ratings/',
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final List list = data is List ? data : (data['data'] ?? []);
+      return list.map((r) => RatingModel.fromJson(r)).toList();
+    } else {
+      throw _handleError(response);
+    }
   }
 
   // --- Stats & Active Rides ---
@@ -185,24 +200,14 @@ class AdminApiService {
     required String method,
     required String path,
     dynamic body,
+    String? overrideBasePath, // ✅ new
   }) async {
     final token = await getToken();
 
     // Switch between Admin and Trip routes automatically
     String subPath = "/api/admin/";
 
-    // LOGIC: Ensure trip-specific endpoints use the correct sub-route
-    // if (path.contains('available') ||
-    //     path.contains('assign') ||
-    // //     path.contains('cancel')) {
-    // //   subPath = "/api/trips/";
-    // //
-    // // }
-    //     path.contains('cancel') ||
-    //     path.contains('accept') ||   // ✅ ADD
-    //     path.contains('all')) {       // ✅ ADD
-    //   subPath = "/api/trips/";
-    // }
+
     if (path.contains('available') ||
         path.contains('assign') ||
         path.contains('cancel') ||
@@ -212,6 +217,17 @@ class AdminApiService {
         path.contains('options') || // ✅ add
         path.contains('confirm')) { // ✅ add
       subPath = "/api/trips/";
+    }
+
+    if (path.contains('feedback')) {
+      subPath = "/api/feedback/";
+    }
+    if (path.contains('ratings')) {       // ← ADD THIS NEW BLOCK RIGHT HERE
+      subPath = "/api/ratings/";
+    }
+    // ✅ Explicit override always wins — avoids keyword-guessing bugs
+    if (overrideBasePath != null) {
+      subPath = overrideBasePath;
     }
 
     if (token == null) throw Exception('Authentication required');
@@ -233,6 +249,7 @@ class AdminApiService {
         'get' => http.get(uri, headers: headers),
         'post' => http.post(uri, headers: headers, body: jsonEncode(body ?? {})),
         'put' => http.put(uri, headers: headers, body: jsonEncode(body ?? {})),
+        'patch' => http.patch(uri, headers: headers, body: jsonEncode(body ?? {})), // ✅ add this
         'delete' => http.delete(uri, headers: headers),
         _ => throw Exception('Invalid Method'),
       }.timeout(_timeout);
@@ -260,6 +277,17 @@ class AdminApiService {
       return Exception(errorData['message'] ?? 'Status ${response.statusCode}');
     } catch (_) {
       return Exception('API Error ${response.statusCode}');
+    }
+  }
+
+  static Future<List<String>> fetchOnlineDriverIds() async {
+    final response = await _securedRequest(method: 'GET', path: 'drivers/online');
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final List ids = data['onlineDriverIds'] ?? [];
+      return ids.map((e) => e.toString()).toList();
+    } else {
+      throw _handleError(response);
     }
   }
 }
