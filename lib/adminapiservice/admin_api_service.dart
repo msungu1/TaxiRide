@@ -14,6 +14,7 @@ class AdminApiService {
   static const String baseUrl = 'https://sizemoretaxi-itpj.onrender.com';
   static const String _tokenKey = 'adminToken';
   static const Duration _timeout = Duration(seconds: 15);
+
   // --- Token Management ---
   static Future<void> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
@@ -47,6 +48,11 @@ class AdminApiService {
     } else {
       throw _handleError(response);
     }
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchActiveRides() async {
+    final rides = await fetchAllTrips(status: 'assigned,accepted,in_progress');
+    return List<Map<String, dynamic>>.from(rides);
   }
 
   static Future<List<dynamic>> fetchAllTrips({String? status}) async {
@@ -86,11 +92,12 @@ class AdminApiService {
   static Future<void> acceptTrip(String tripId) async {
     final response = await _securedRequest(
       method: 'POST',
-      path: 'accept',  // hits /api/trips/accept
+      path: 'accept', // hits /api/trips/accept
       body: {'tripId': tripId},
     );
     if (response.statusCode != 200) throw _handleError(response);
   }
+
   // --- User Management (Restored & Fixed) ---
   static Future<List<UserModel>> fetchAllUsers() async {
     final response = await _securedRequest(method: 'GET',
@@ -105,7 +112,8 @@ class AdminApiService {
     }
   }
 
-  static Future<void> updateUser(String userId, Map<String, dynamic> updatedData) async {
+  static Future<void> updateUser(String userId,
+      Map<String, dynamic> updatedData) async {
     final response = await _securedRequest(
       method: 'PATCH',
       path: 'users/$userId',
@@ -115,25 +123,32 @@ class AdminApiService {
   }
 
   static Future<void> toggleUserStatus(String userId, bool isBlocked) async {
-    final endpoint = isBlocked ? 'users/$userId/disable' : 'users/$userId/enable';
+    final endpoint = isBlocked
+        ? 'users/$userId/disable'
+        : 'users/$userId/enable';
     final response = await _securedRequest(method: 'PUT', path: endpoint);
     if (response.statusCode != 200) throw _handleError(response);
   }
 
   static Future<void> deleteUser(String userId) async {
-    final response = await _securedRequest(method: 'DELETE', path: 'users/$userId');
+    final response = await _securedRequest(
+        method: 'DELETE', path: 'users/$userId');
     if (response.statusCode != 200) throw _handleError(response);
   }
 
-  static Future<void> blockUser(String userId) async => toggleUserStatus(userId, true);
-  static Future<void> unblockUser(String userId) async => toggleUserStatus(userId, false);
+  static Future<void> blockUser(String userId) async =>
+      toggleUserStatus(userId, true);
+
+  static Future<void> unblockUser(String userId) async =>
+      toggleUserStatus(userId, false);
 
   // --- Feedback & Reports ---
   static Future<List<ReportModel>> fetchReports() async {
     final response = await _securedRequest(method: 'GET', path: 'reports');
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      final List list = data is List ? data : (data['data'] ?? data['reports'] ?? []);
+      final List list = data is List ? data : (data['data'] ??
+          data['reports'] ?? []);
       return list.map((e) => ReportModel.fromJson(e)).toList();
     } else {
       throw _handleError(response);
@@ -148,7 +163,8 @@ class AdminApiService {
     );
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      final List list = data is List ? data : (data['data'] ?? data['feedback'] ?? []);
+      final List list = data is List ? data : (data['data'] ??
+          data['feedback'] ?? []);
       return list.map((f) => FeedbackModel.fromJson(f)).toList();
     } else {
       throw _handleError(response);
@@ -181,20 +197,32 @@ class AdminApiService {
 
   // --- Stats & Active Rides ---
   static Future<Map<String, dynamic>> fetchDashboardStats() async {
-    final response = await _securedRequest(method: 'GET', path: 'dashboard/stats');
+    final response = await _securedRequest(
+        method: 'GET', path: 'dashboard/stats');
     if (response.statusCode == 200) return jsonDecode(response.body);
     throw _handleError(response);
   }
 
-  static Future<List<Map<String, dynamic>>> fetchActiveRides() async {
-    final response = await _securedRequest(method: 'GET', path: 'rides/active');
+  static Future<List<Map<String, dynamic>>> fetchOnlineDriverLocations() async {
+    final response = await _securedRequest(
+        method: 'GET', path: 'drivers/online-locations');
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(data['rides'] ?? data['data'] ?? []);
+      return List<Map<String, dynamic>>.from(data['data'] ?? []);
     } else {
       throw _handleError(response);
     }
   }
+
+  // static Future<List<Map<String, dynamic>>> fetchActiveRides() async {
+  //   final response = await _securedRequest(method: 'GET', path: 'rides/active');
+  //   if (response.statusCode == 200) {
+  //     final data = jsonDecode(response.body);
+  //     return List<Map<String, dynamic>>.from(data['rides'] ?? data['data'] ?? []);
+  //   } else {
+  //     throw _handleError(response);
+  //   }
+  // }
 
   static Future<http.Response> _securedRequest({
     required String method,
@@ -211,9 +239,9 @@ class AdminApiService {
     if (path.contains('available') ||
         path.contains('assign') ||
         path.contains('cancel') ||
-        path.contains('accept') ||  // ✅ add
+        path.contains('accept') || // ✅ add
         path.contains('decline') || // ✅ add
-        path.contains('all') ||     // ✅ add
+        path.contains('all') || // ✅ add
         path.contains('options') || // ✅ add
         path.contains('confirm')) { // ✅ add
       subPath = "/api/trips/";
@@ -222,7 +250,7 @@ class AdminApiService {
     if (path.contains('feedback')) {
       subPath = "/api/feedback/";
     }
-    if (path.contains('ratings')) {       // ← ADD THIS NEW BLOCK RIGHT HERE
+    if (path.contains('ratings')) { // ← ADD THIS NEW BLOCK RIGHT HERE
       subPath = "/api/ratings/";
     }
     // ✅ Explicit override always wins — avoids keyword-guessing bugs
@@ -247,9 +275,12 @@ class AdminApiService {
       // UPDATED SWITCH: Added jsonEncode(body ?? {}) to prevent null body errors on Web
       final response = await switch (method.toLowerCase()) {
         'get' => http.get(uri, headers: headers),
-        'post' => http.post(uri, headers: headers, body: jsonEncode(body ?? {})),
+        'post' =>
+            http.post(uri, headers: headers, body: jsonEncode(body ?? {})),
         'put' => http.put(uri, headers: headers, body: jsonEncode(body ?? {})),
-        'patch' => http.patch(uri, headers: headers, body: jsonEncode(body ?? {})), // ✅ add this
+        'patch' =>
+            http.patch(uri, headers: headers,
+                body: jsonEncode(body ?? {})), // ✅ add this
         'delete' => http.delete(uri, headers: headers),
         _ => throw Exception('Invalid Method'),
       }.timeout(_timeout);
@@ -271,6 +302,7 @@ class AdminApiService {
       throw Exception('Network Error: $e');
     }
   }
+
   static Exception _handleError(http.Response response) {
     try {
       final errorData = jsonDecode(response.body);
@@ -280,14 +312,13 @@ class AdminApiService {
     }
   }
 
-  static Future<List<String>> fetchOnlineDriverIds() async {
-    final response = await _securedRequest(method: 'GET', path: 'drivers/online');
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final List ids = data['onlineDriverIds'] ?? [];
-      return ids.map((e) => e.toString()).toList();
-    } else {
-      throw _handleError(response);
-    }
-  }
+// static Future<List<Map<String, dynamic>>> fetchOnlineDriverLocations() async {
+//   final response = await _securedRequest(method: 'GET', path: 'drivers/online-locations');
+//   if (response.statusCode == 200) {
+//     final data = jsonDecode(response.body);
+//     return List<Map<String, dynamic>>.from(data['data'] ?? []);
+//   } else {
+//     throw _handleError(response);
+//   }
+// }}
 }

@@ -42,6 +42,10 @@ class _ActiveRidesScreenState extends State<ActiveRidesScreen> {
     socket.on('status_update', (data) {
       _updateRideStatusLocally(data['tripId'], data['status']);
     });
+
+    socket.on('driver_assigned', (_) => _fetchActiveRides());
+    socket.on('trip_started', (_) => _fetchActiveRides());
+
   }
 
   // Helper to remove the ride from the list UI
@@ -73,6 +77,8 @@ class _ActiveRidesScreenState extends State<ActiveRidesScreen> {
     SocketService.instance.socket?.off('trip_completed');
     SocketService.instance.socket?.off('trip_cancelled');
     SocketService.instance.socket?.off('status_update');
+    SocketService.instance.socket?.off('driver_assigned');
+    SocketService.instance.socket?.off('trip_started');
     super.dispose();
   }
   Future<void> _fetchActiveRides() async {
@@ -128,6 +134,8 @@ class _ActiveRidesScreenState extends State<ActiveRidesScreen> {
           itemCount: _rides.length,
           itemBuilder: (context, index) {
             final ride = _rides[index];
+            final rider = ride['rider'] as Map<String, dynamic>?;
+            final driverData = ride['driver'] as Map<String, dynamic>?;
 
             // Consistent mapping with your other screens
             final passenger = ride['riderName'] ?? ride['passengerName'] ?? 'Unknown';

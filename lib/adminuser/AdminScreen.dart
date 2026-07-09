@@ -65,7 +65,8 @@ class _AdminScreenState extends State<AdminScreen> {
   bool _isPopupShowing = false;
   StreamSubscription? _socketSub;
   double totalRevenue = 0;
-
+  int completedTripsCount = 0;
+  int totalTripsCount = 0;
   @override
   void initState() {
     super.initState();
@@ -136,35 +137,54 @@ class _AdminScreenState extends State<AdminScreen> {
     fetchPendingTrips();
     fetchFeedback();
     fetchRatings();
-
+    fetchTotalTripsCompleted();
     _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
 
       if (mounted) {
         fetchUsers();
         fetchPendingTrips();
-        fetchDashboardStats(); // <-- refresh counts
+        fetchDashboardStats();
+        fetchTotalTripsCompleted(); // ADD THIS
       }
     });
   }
 
   void _updateDriverMarker(Map<String, dynamic> data) {
-    // Use 'userId' or 'driverId' depending on what your backend emits back
-    final String driverId = data['driverId'] ?? data['userId'] ?? 'unknown';
-    final double lat = data['lat'] ?? 0.0;
-    final double lng = data['lng'] ?? 0.0;
+    final String driverId = data['driverId']?.toString() ?? data['userId']?.toString() ?? 'unknown';
+    final double? lat = (data['lat'] as num?)?.toDouble();
+    final double? lng = (data['lng'] as num?)?.toDouble();
 
-    if (lat == 0.0 || lng == 0.0) return;
+    if (lat == null || lng == null || (lat == 0.0 && lng == 0.0)) return;
 
     setState(() {
       _driverMarkers[MarkerId(driverId)] = Marker(
         markerId: MarkerId(driverId),
         position: LatLng(lat, lng),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        // Fallback if name is missing from the stream
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+        rotation: (data['heading'] as num?)?.toDouble() ?? 0,
+        anchor: const Offset(0.5, 0.5),
         infoWindow: InfoWindow(title: "Driver: ${data['driverName'] ?? 'Active Driver'}"),
       );
     });
   }
+  // void _updateDriverMarker(Map<String, dynamic> data) {
+  //   // Use 'userId' or 'driverId' depending on what your backend emits back
+  //   final String driverId = data['driverId'] ?? data['userId'] ?? 'unknown';
+  //   final double lat = data['lat'] ?? 0.0;
+  //   final double lng = data['lng'] ?? 0.0;
+  //
+  //   if (lat == 0.0 || lng == 0.0) return;
+  //
+  //   setState(() {
+  //     _driverMarkers[MarkerId(driverId)] = Marker(
+  //       markerId: MarkerId(driverId),
+  //       position: LatLng(lat, lng),
+  //       icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+  //       // Fallback if name is missing from the stream
+  //       infoWindow: InfoWindow(title: "Driver: ${data['driverName'] ?? 'Active Driver'}"),
+  //     );
+  //   });
+  // }
   @override
   void dispose(){
     _socketSub?.cancel(); // ✅ ADD THIS
@@ -213,7 +233,30 @@ class _AdminScreenState extends State<AdminScreen> {
       print("Dashboard Trip Fetch Error: $e");
     }
   }
+  Future<void> fetchOnlineDriverLocations() async {
+    try {
+      final drivers = await AdminApiService.fetchOnlineDriverLocations();
+      if (!mounted) return;
+      setState(() {
+        for (final d in drivers) {
+          final lat = (d['lat'] as num?)?.toDouble();
+          final lng = (d['lng'] as num?)?.toDouble();
+          if (lat == null || lng == null) continue;
 
+          final driverId = d['driverId'].toString();
+          _driverMarkers[MarkerId(driverId)] = Marker(
+            markerId: MarkerId(driverId),
+            position: LatLng(lat, lng),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            anchor: const Offset(0.5, 0.5),
+            infoWindow: InfoWindow(title: "Driver: ${d['name'] ?? 'Active Driver'}"),
+          );
+        }
+      });
+    } catch (e) {
+      debugPrint("Online driver locations fetch failed: $e");
+    }
+  }
   void _showRideRequestPopup(Map<String, dynamic> tripData) {
     if (_isPopupShowing) return;
     _isPopupShowing = true;
@@ -281,7 +324,16 @@ class _AdminScreenState extends State<AdminScreen> {
       Fluttertoast.showToast(msg: 'Error fetching users: $e');
     }
   }
-
+  Future<void> fetchTotalTripsCompleted() async {
+    try {
+      final result = await AdminApiService.fetchAllTrips(status: 'completed');
+      if (mounted) {
+        setState(() => totalTripsCount = result.length);
+      }
+    } catch (e) {
+      debugPrint("Total trips fetch failed: $e");
+    }
+  }
   Future<void> fetchFeedback() async {
     if (!mounted) return;
     setState(() => isLoadingFeedback = true);
@@ -889,6 +941,13 @@ class _AdminScreenState extends State<AdminScreen> {
                     MaterialPageRoute(builder: (_) => const RatingsScreen()),
                   ),
                 ),
+                _buildAnalyticsCard(
+                  icon: Icons.check_circle,
+                  title: "Total Trips",
+                  value: "$totalTripsCount",
+                  color: Colors.indigo,
+                ),
+
 
 
               ],
@@ -1298,6 +1357,18 @@ class _AdminScreenState extends State<AdminScreen> {
                         title: "Passengers",
                         value: "$activePassengers",
                         color: Colors.purple,
+                      ),
+                      _buildPremiumCard(
+                        title: 'Total Trips',
+                        value: '$totalTripsCount',
+                        icon: Icons.check_circle,
+                        gradient: const [
+                          Color(0xFF6366F1),
+                          Color(0xFF4338CA),
+                        ],
+                        onTap: () {
+                          // Optional: navigate to a completed trips history screen
+                        },
                       ),
                     ],
                   ),

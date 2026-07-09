@@ -26,6 +26,7 @@ class CreateAccountScreen extends StatefulWidget {
 class _CreateAccountScreenState extends State<CreateAccountScreen> {
   File? driverImage;
   File? licenseImage;
+  File? nationalIdImage;
 
   String? selectedCarType; // will be 'Comfort', 'Premium' or 'Business'
 
@@ -243,7 +244,46 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
       showMessage("Error picking license image: $e", Colors.orange);
     }
   }
+  Future<void> _pickNationalIdImage() async {
+    try {
+      final XFile? pickedFile = await showModalBottomSheet<XFile?>(
+        context: context,
+        builder: (context) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Take Photo'),
+              onTap: () async {
+                final file = await _picker.pickImage(
+                  source: ImageSource.camera,
+                );
+                Navigator.pop(context, file);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from Gallery'),
+              onTap: () async {
+                final file = await _picker.pickImage(
+                  source: ImageSource.gallery,
+                );
+                Navigator.pop(context, file);
+              },
+            ),
+          ],
+        ),
+      );
 
+      if (pickedFile != null) {
+        setState(() {
+          nationalIdImage = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      showMessage("Error picking National ID image: $e", Colors.orange);
+    }
+  }
   @override
   Widget build(BuildContext context) {
     // Define our new theme colors locally for easy editing
@@ -253,7 +293,18 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
 
     return Scaffold(
       backgroundColor: deepBackground,
-      body: SafeArea(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+              center: Alignment(0, -0.6),
+              radius: 1.2,
+              colors: [
+                Color(0xFF16283E),
+                Color(0xFF0F172A),
+              ],
+              stops: [0.0, 0.6]
+          )
+        ),
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
           child: Form(
@@ -280,58 +331,73 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
 
                 const SizedBox(height: 30),
 
-Column(
-  children: [
-    Container(
-      height: 120,
-      width: 120,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: const Color(0xFF008080),
-        border: Border.all(
-          color: primaryCyan.withOpacity(0.3),
-          width: 1.5,
-
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF008080).withOpacity(0.3),
-          blurRadius: 30,
-            spreadRadius: 2,
-          ),
-        ],
-
-
-
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(60),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Image.asset(
-            'assets/images/logo.png',
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) => const Icon(
-              Icons.local_taxi_rounded,
-              size:50,
-              color: primaryCyan,
-            ),
-          ),
-        ),
-      ),
-    ),
-const SizedBox(height: 15),
-    Text(
-      'SIZEMORETAXI',
-      style: GoogleFonts.montserrat(
-        color: Colors.white,
-        fontSize: 22,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 4.0,
-      ),
-    ),
-  ],
-),
+// Column(
+//   children: [
+//     Container(
+//       height: 120,
+//       width: 120,
+//       decoration: BoxDecoration(
+//         shape: BoxShape.circle,
+//         color: const Color(0xFF008080),
+//         border: Border.all(
+//           color: primaryCyan.withOpacity(0.3),
+//           width: 1.5,
+//
+//         ),
+//         boxShadow: [
+//           BoxShadow(
+//             color: const Color(0xFF008080).withOpacity(0.3),
+//           blurRadius: 30,
+//             spreadRadius: 2,
+//           ),
+//         ],
+//
+//
+//
+//       ),
+//       child: ClipRRect(
+//         borderRadius: BorderRadius.circular(60),
+//         child: Padding(
+//           padding: const EdgeInsets.all(18),
+//           child: Image.asset(
+//             'assets/images/logo.png',
+//             fit: BoxFit.contain,
+//             errorBuilder: (context, error, stackTrace) => const Icon(
+//               Icons.local_taxi_rounded,
+//               size:50,
+//               color: primaryCyan,
+//             ),
+//           ),
+//         ),
+//       ),
+//     ),
+// const SizedBox(height: 15),
+//     Text(
+//       'SIZEMORETAXI',
+//       style: GoogleFonts.montserrat(
+//         color: Colors.white,
+//         fontSize: 22,
+//         fontWeight: FontWeight.w900,
+//         letterSpacing: 4.0,
+//       ),
+//     ),
+//   ],
+// ),
+                Column(
+                  children: [
+                    const _LogoHeader(),
+                    const SizedBox(height: 15),
+                    Text(
+                      'SIZEMORETAXI',
+                      style: GoogleFonts.montserrat(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 4.0,
+                      ),
+                    ),
+                  ],
+                ),
 
                 const SizedBox(height: 30),
 
@@ -528,15 +594,60 @@ const SizedBox(height: 15),
                           ),
                         ),
 
+                        const SizedBox(height: 24),
+
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "  National ID Photo",
+                                style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 8),
+                              GestureDetector(
+                                onTap: _pickNationalIdImage,
+                                child: Container(
+                                  height: 140,
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1E293B),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: Colors.white10),
+                                  ),
+                                  child: nationalIdImage == null
+                                      ? Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.badge_outlined, color: const Color(0xFF22D3EE), size: 40),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        "Tap to take/upload national ID photo",
+                                        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
+                                      ),
+                                    ],
+                                  )
+                                      : ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Image.file(
+                                      nationalIdImage!,
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      height: 140,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+
                         const SizedBox(height: 16),
                       ],
 
 
-                      inputField(
-                        "National ID",
-                        nationalIdController,
-                        icon: Icons.assignment_ind_outlined,
-                      ),
 
                       inputField(
                         "Password",
@@ -783,6 +894,68 @@ class RoleSelector extends StatelessWidget {
             ),
           );
         }).toList(),
+      ),
+    );
+  }
+}
+
+class _LogoHeader extends StatefulWidget {
+  const _LogoHeader();
+  @override
+  State<_LogoHeader> createState() => _LogoHeaderState();
+}
+
+class _LogoHeaderState extends State<_LogoHeader> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 2),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const primaryCyan = Color(0xFF22D3EE);
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final glow = 20 + (_controller.value * 15);
+        return Container(
+          height: 120,
+          width: 120,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFF008080),
+            border: Border.all(color: primaryCyan.withOpacity(0.3), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF008080).withOpacity(0.35),
+                blurRadius: glow,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: child,
+        );
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(60),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Image.asset(
+            'assets/images/logo.png',
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => const Icon(
+              Icons.local_taxi_rounded,
+              size: 50,
+              color: primaryCyan,
+            ),
+          ),
+        ),
       ),
     );
   }
