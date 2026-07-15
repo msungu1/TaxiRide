@@ -90,7 +90,32 @@ class _AdminScreenState extends State<AdminScreen> {
       final tripId = event['tripId'];
 
       debugPrint("📡 Admin Stream Event: $event");
+// ---------------- NEW RIDE REQUEST ----------------
+      if (type == 'ride_requested') {
+        debugPrint("🚕 NEW RIDE REQUEST RECEIVED");
 
+        setState(() {
+          pendingTrips.insert(0, {
+            '_id': event['tripId'],
+            'riderName': event['rider']?['name'] ?? 'Unknown Rider',
+            'pickupLocation': event['pickupLocation'],
+            'dropoffLocation': event['dropoffLocation'],
+            'fare': event['fare'],
+            'vehicleType': event['vehicleType'],
+          });
+
+          pendingBookingsCount = pendingTrips.length;
+        });
+
+        _showRideRequestPopup({
+          '_id': event['tripId'],
+          'riderName': event['rider']?['name'] ?? 'Unknown Rider',
+          'pickupLocation': event['pickupLocation'],
+          'dropoffLocation': event['dropoffLocation'],
+          'fare': event['fare'],
+          'vehicleType': event['vehicleType'],
+        });
+      }
       // ---------------- CANCEL ----------------
       if (type == 'trip_cancelled') {
         setState(() {
@@ -213,7 +238,7 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> fetchPendingTrips() async {
     try {
       // We only want the 'requested' ones for the horizontal list/popups
-      final result = await AdminApiService.fetchAllTrips(status: 'requested');
+      final result = await AdminApiService.fetchAllTrips(status: 'requested,pending');
 
       if (mounted) {
         setState(() {

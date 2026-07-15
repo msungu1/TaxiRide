@@ -103,7 +103,15 @@ class SocketService {
     _socket!.onConnectError((e) {
       debugPrint("❌ Connect error: $e");
     });
+// ===================== NEW RIDE REQUESTED (ADMIN NOTIFICATION) =====================
+    _socket!.on('ride_requested', (data) {
+      debugPrint("🆕 ride_requested: $data");
 
+      _rideUpdateController.add({
+        'type': 'ride_requested',
+        ...Map<String, dynamic>.from(data),
+      });
+    });
   }
 
   // ===================== ROOMS =====================

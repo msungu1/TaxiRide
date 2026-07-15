@@ -265,9 +265,37 @@ class _RequestRideTwoState extends State<RequestRideTwo> {
                   color: const Color(0xFF2e2d1f),
                   borderRadius: BorderRadius.circular(16),
                 ),
+                // child: Column(
+                //   children: [
+                //     Image.asset(widget.selectedOption.imagePath, height: 100),
+                //     const SizedBox(height: 10),
+                //     Text(
+                //       widget.selectedOption.title,
+                //       style: const TextStyle(
+                //         color: Colors.white,
+                //         fontSize: 18,
+                //         fontWeight: FontWeight.bold,
+                //       ),
+                //     ),
+                //     Text(
+                //       widget.selectedOption.price,
+                //       style: const TextStyle(
+                //         color: Color(0xFFEEDB0B),
+                //         fontSize: 18,
+                //         fontWeight: FontWeight.w600,
+                //       ),
+                //     ),
+                //   ],
+                // ),
                 child: Column(
                   children: [
-                    Image.asset(widget.selectedOption.imagePath, height: 100),
+                    widget.selectedOption.imagePath != null
+                        ? Image.asset(widget.selectedOption.imagePath, height: 100)
+                        : const Icon(
+                      Icons.directions_car_filled_rounded,
+                      color: Colors.white,
+                      size: 80,
+                    ),
                     const SizedBox(height: 10),
                     Text(
                       widget.selectedOption.title,

@@ -29,9 +29,9 @@ class LatLng {
 }
 
 class RideOption {
+  String? imagePath;
   final String id;
   final String title;
-  final String imagePath;
   final String time;
   final String price;
   final bool isPopular;
@@ -40,9 +40,9 @@ class RideOption {
   RideOption({
     required this.id,
     required this.title,
-    required this.imagePath,
     required this.time,
     required this.price,
+    this.imagePath,
     this.isPopular = false,
     this.eco = false,
   });
@@ -209,23 +209,22 @@ class _RequestRideScreenState extends State<RequestRideScreen> {
             final type = v['type'] as String;
 
             String title;
-            String imagePath;
+            String? imagePath;
             bool isPopular = false;
             bool eco = true;
-
+            IconData? rideIcon;
             switch (type) {
               case "Comfort":
                 title = "Comfort";
-                imagePath = 'assets/icons/comfort.png';
+                // imagePath = 'assets/icons/comfort.png';
                 isPopular = true; // as you had
                 break;
-              case "bussines":
+              case "Bussines":
                 title = "Business";
-                imagePath = 'assets/icons/sedan.png';
+                rideIcon = Icons.business_center_rounded;
                 break;
               case "Premium":
                 title = "Premium";
-                imagePath = 'assets/icons/premium-service.png';
                 break;
               case "Chopper":
                 title = "Chopper";
@@ -234,7 +233,6 @@ class _RequestRideScreenState extends State<RequestRideScreen> {
                 break;
               default:
                 title = type; // fallback
-                imagePath = 'assets/images/icons/default.png'; // add a default if needed
             }
 
             return RideOption(
@@ -261,9 +259,6 @@ class _RequestRideScreenState extends State<RequestRideScreen> {
           _isCalculating = false;
           _showRideOptions = true;
         });
-
-
-
 
 
       } else {
@@ -411,6 +406,7 @@ class _RequestRideScreenState extends State<RequestRideScreen> {
                     isPopular: option.isPopular,
                     eco: option.eco,
                   ),
+
                 )),
               ],
             ],
@@ -468,7 +464,7 @@ class _RequestRideScreenState extends State<RequestRideScreen> {
 
 
   Widget _rideOption({
-    required String imagePath,
+    String? imagePath,
     required String title,
     required String time,
     required String price,
@@ -491,23 +487,25 @@ class _RequestRideScreenState extends State<RequestRideScreen> {
         ),
         child: Row(
           children: [
-            // Styled Icon Container
+
+
             Container(
               height: 60,
               width: 60,
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: brandYellow.withOpacity(0.05), // Very subtle yellow glow
+                color: brandYellow.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Image.asset(
+              child: imagePath != null
+                  ? Image.asset(
                 imagePath,
-                // THIS TINTS THE PNG TO ONE COLOR
-                color: brandYellow,
-                colorBlendMode: BlendMode.modulate,
                 fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) =>
-                const Icon(Icons.car_rental, color: brandYellow),
+              )
+                  : const Icon(
+                Icons.directions_car_filled_rounded,
+                color: Colors.white,
+                size: 34,
               ),
             ),
             const SizedBox(width: 16),

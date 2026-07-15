@@ -214,15 +214,6 @@ class AdminApiService {
     }
   }
 
-  // static Future<List<Map<String, dynamic>>> fetchActiveRides() async {
-  //   final response = await _securedRequest(method: 'GET', path: 'rides/active');
-  //   if (response.statusCode == 200) {
-  //     final data = jsonDecode(response.body);
-  //     return List<Map<String, dynamic>>.from(data['rides'] ?? data['data'] ?? []);
-  //   } else {
-  //     throw _handleError(response);
-  //   }
-  // }
 
   static Future<http.Response> _securedRequest({
     required String method,
@@ -312,13 +303,4 @@ class AdminApiService {
     }
   }
 
-// static Future<List<Map<String, dynamic>>> fetchOnlineDriverLocations() async {
-//   final response = await _securedRequest(method: 'GET', path: 'drivers/online-locations');
-//   if (response.statusCode == 200) {
-//     final data = jsonDecode(response.body);
-//     return List<Map<String, dynamic>>.from(data['data'] ?? []);
-//   } else {
-//     throw _handleError(response);
-//   }
-// }}
 }
