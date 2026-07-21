@@ -328,48 +328,6 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
-  // void _showRideRequestPopup(Map<String, dynamic> tripData) {
-  //   if (_isPopupShowing) return;
-  //   _isPopupShowing = true;
-  //
-  //   final bool isChopper =
-  //       (tripData['vehicleType'] ?? '')
-  //           .toString()
-  //           .toLowerCase() ==
-  //           'chopper';
-  //
-  //   showDialog(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     builder: (context) => RideRequestPopup(
-  //       rideData: {
-  //         'tripId': tripData['_id'],
-  //         'riderName': tripData['riderName'],
-  //         'pickupLocation': tripData['pickupLocation'],
-  //         'dropoffLocation': tripData['dropoffLocation'],
-  //         'fare': tripData['fare'],
-  //         'vehicleType': tripData['vehicleType'],
-  //       },
-  //
-  //       onAccept: () {
-  //         Navigator.pop(context);
-  //         _isPopupShowing = false;
-  //
-  //         if (isChopper) {
-  //           _callPassenger(tripData);
-  //         } else {
-  //           _showDispatchDialog(tripData['_id']);
-  //         }
-  //       },
-  //
-  //       onReject: () {
-  //         Navigator.pop(context);
-  //         _isPopupShowing = false;
-  //         _handleCancel(tripData['_id']);
-  //       },
-  //     ),
-  //   );
-  // }
   Future<void> fetchDashboardStats() async {
     setState(() => isLoadingDashboard = true);
 

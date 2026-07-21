@@ -32,16 +32,7 @@ class AdminApiService {
     await prefs.remove(_tokenKey);
   }
 
-  // static Future<void> completeTrip(String tripId) async {
-  //   final response = await http.post(
-  //     Uri.parse('$baseUrl/trips/complete'), // match your actual route
-  //     headers: {'Content-Type': 'application/json'},
-  //     body: jsonEncode({'tripId': tripId}),
-  //   );
-  //   if (response.statusCode != 200) {
-  //     throw Exception(jsonDecode(response.body)['message'] ?? 'Failed to complete trip');
-  //   }
-  // }
+
   static Future<void> completeTrip(String tripId) async {
     final response = await _securedRequest(
       method: 'POST',
