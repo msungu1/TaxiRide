@@ -32,7 +32,24 @@ class AdminApiService {
     await prefs.remove(_tokenKey);
   }
 
-
+  // static Future<void> completeTrip(String tripId) async {
+  //   final response = await http.post(
+  //     Uri.parse('$baseUrl/trips/complete'), // match your actual route
+  //     headers: {'Content-Type': 'application/json'},
+  //     body: jsonEncode({'tripId': tripId}),
+  //   );
+  //   if (response.statusCode != 200) {
+  //     throw Exception(jsonDecode(response.body)['message'] ?? 'Failed to complete trip');
+  //   }
+  // }
+  static Future<void> completeTrip(String tripId) async {
+    final response = await _securedRequest(
+      method: 'POST',
+      path: 'complete', // hits /api/trips/complete
+      body: {'tripId': tripId},
+    );
+    if (response.statusCode != 200) throw _handleError(response);
+  }
   static Future<List<UserModel>> getAvailableDrivers(String tripId) async {
     // We use _securedRequest because it already handles the Token and the /api/trips/ path
     final response = await _securedRequest(
@@ -234,9 +251,10 @@ class AdminApiService {
         path.contains('decline') || // ✅ add
         path.contains('all') || // ✅ add
         path.contains('options') || // ✅ add
-        path.contains('confirm')) { // ✅ add
-      subPath = "/api/trips/";
-    }
+        path.contains('confirm') || // ✅ add
+
+    path.contains('complete')) {   // 👈 ADD THIS
+    subPath = "/api/trips/";    }
 
     if (path.contains('feedback')) {
       subPath = "/api/feedback/";

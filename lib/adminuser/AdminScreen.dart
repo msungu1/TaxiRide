@@ -93,13 +93,14 @@ class _AdminScreenState extends State<AdminScreen> {
 // ---------------- NEW RIDE REQUEST ----------------
       if (type == 'ride_requested') {
         debugPrint("🚕 NEW RIDE REQUEST RECEIVED");
-
+        final riderData = event['rider'] ?? {};
         setState(() {
           pendingTrips.insert(0, {
             '_id': event['tripId'],
             'riderName': event['rider']?['name'] ?? 'Unknown Rider',
             'pickupLocation': event['pickupLocation'],
             'dropoffLocation': event['dropoffLocation'],
+            'riderPhone': riderData['phone'] ?? '',   // <-- was missing
             'fare': event['fare'],
             'vehicleType': event['vehicleType'],
           });
@@ -112,6 +113,8 @@ class _AdminScreenState extends State<AdminScreen> {
           'riderName': event['rider']?['name'] ?? 'Unknown Rider',
           'pickupLocation': event['pickupLocation'],
           'dropoffLocation': event['dropoffLocation'],
+          'riderPhone': riderData['phone'] ?? '',
+
           'fare': event['fare'],
           'vehicleType': event['vehicleType'],
         });
@@ -192,24 +195,7 @@ class _AdminScreenState extends State<AdminScreen> {
       );
     });
   }
-  // void _updateDriverMarker(Map<String, dynamic> data) {
-  //   // Use 'userId' or 'driverId' depending on what your backend emits back
-  //   final String driverId = data['driverId'] ?? data['userId'] ?? 'unknown';
-  //   final double lat = data['lat'] ?? 0.0;
-  //   final double lng = data['lng'] ?? 0.0;
-  //
-  //   if (lat == 0.0 || lng == 0.0) return;
-  //
-  //   setState(() {
-  //     _driverMarkers[MarkerId(driverId)] = Marker(
-  //       markerId: MarkerId(driverId),
-  //       position: LatLng(lat, lng),
-  //       icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-  //       // Fallback if name is missing from the stream
-  //       infoWindow: InfoWindow(title: "Driver: ${data['driverName'] ?? 'Active Driver'}"),
-  //     );
-  //   });
-  // }
+
   @override
   void dispose(){
     _socketSub?.cancel(); // ✅ ADD THIS
@@ -235,23 +221,31 @@ class _AdminScreenState extends State<AdminScreen> {
       debugPrint("Ratings fetch failed: $e");
     }
   }
+  int _fetchTripsRequestId = 0;
   Future<void> fetchPendingTrips() async {
+    final int requestId = ++_fetchTripsRequestId;
     try {
       // We only want the 'requested' ones for the horizontal list/popups
-      final result = await AdminApiService.fetchAllTrips(status: 'requested,pending');
+      final result = await AdminApiService.fetchAllTrips(status: 'requested,pending,accepted');
+      debugPrint("RAW FETCH RESULT: ${result.map((t) => {'id': t['_id'], 'status': t['status'], 'vehicleType': t['vehicleType']}).toList()}");
 
       if (mounted) {
-        setState(() {
-          pendingTrips = result;
-          isLoadingTrips = false;
-          filteredTrips = result;
 
-          // Check for new trips to show the popup
-          if (pendingTrips.isNotEmpty && pendingTrips.length > _lastTripCount) {
-            // Pass the last trip in the list to the popup
-            _showRideRequestPopup(pendingTrips.first);
-          }
-          _lastTripCount = pendingTrips.length;
+        setState(() {
+          pendingTrips = result.where((t) {
+            final status = (t['status'] ?? '').toString().toLowerCase();
+            final vehicle = (t['vehicleType'] ?? '').toString().toLowerCase();
+
+            if (status == 'accepted') {
+              // Only keep accepted trips visible if they're chopper
+              // (waiting for manual call / complete)
+              return vehicle == 'chopper';
+            }
+            return true; // pending/requested always shown
+          }).toList();
+
+          isLoadingTrips = false;
+          filteredTrips = pendingTrips;
         });
       }
     } catch (e) {
@@ -286,22 +280,44 @@ class _AdminScreenState extends State<AdminScreen> {
     if (_isPopupShowing) return;
     _isPopupShowing = true;
 
+    final bool isChopper =
+        (tripData['vehicleType'] ?? '').toString().toLowerCase() == 'chopper';
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => RideRequestPopup(
         rideData: {
           'tripId': tripData['_id'],
-          'riderName': tripData['riderName'], // Match your backend key
+          'riderName': tripData['riderName'],
           'pickupLocation': tripData['pickupLocation'],
           'dropoffLocation': tripData['dropoffLocation'],
-          'fare': tripData['fare'], // Make sure this matches the backend key
+          'fare': tripData['fare'],
           'vehicleType': tripData['vehicleType'],
         },
         onAccept: () {
           Navigator.pop(context);
           _isPopupShowing = false;
-          _showDispatchDialog(tripData['_id']);
+
+          Future.microtask(() async {
+            if (isChopper) {
+              try {
+                await AdminApiService.acceptTrip(tripData['_id']);
+                Fluttertoast.showToast(
+                  msg: "Trip accepted. Passenger notified.",
+                  backgroundColor: Colors.green,
+                );
+                _refreshData();
+              } catch (e) {
+                Fluttertoast.showToast(
+                  msg: "Failed to accept: $e",
+                  backgroundColor: Colors.red,
+                );
+              }
+            } else {
+              _showDispatchDialog(tripData['_id']);
+            }
+          });
         },
         onReject: () {
           Navigator.pop(context);
@@ -311,6 +327,49 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
+
+  // void _showRideRequestPopup(Map<String, dynamic> tripData) {
+  //   if (_isPopupShowing) return;
+  //   _isPopupShowing = true;
+  //
+  //   final bool isChopper =
+  //       (tripData['vehicleType'] ?? '')
+  //           .toString()
+  //           .toLowerCase() ==
+  //           'chopper';
+  //
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: false,
+  //     builder: (context) => RideRequestPopup(
+  //       rideData: {
+  //         'tripId': tripData['_id'],
+  //         'riderName': tripData['riderName'],
+  //         'pickupLocation': tripData['pickupLocation'],
+  //         'dropoffLocation': tripData['dropoffLocation'],
+  //         'fare': tripData['fare'],
+  //         'vehicleType': tripData['vehicleType'],
+  //       },
+  //
+  //       onAccept: () {
+  //         Navigator.pop(context);
+  //         _isPopupShowing = false;
+  //
+  //         if (isChopper) {
+  //           _callPassenger(tripData);
+  //         } else {
+  //           _showDispatchDialog(tripData['_id']);
+  //         }
+  //       },
+  //
+  //       onReject: () {
+  //         Navigator.pop(context);
+  //         _isPopupShowing = false;
+  //         _handleCancel(tripData['_id']);
+  //       },
+  //     ),
+  //   );
+  // }
   Future<void> fetchDashboardStats() async {
     setState(() => isLoadingDashboard = true);
 
@@ -519,6 +578,44 @@ class _AdminScreenState extends State<AdminScreen> {
       await _emergencyPlayer.play(AssetSource('sounds/alert.mp3'));
     } catch (e) {
       debugPrint("❌ AUDIO ERROR: $e");
+    }
+  }
+  Future<void> _callPassenger(Map<String, dynamic> trip) async {
+    final phone = trip['riderPhone'] ?? trip['phone'] ?? trip['rider']?['phone'];
+
+    if (phone == null || phone.toString().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Passenger phone number not available"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final uri = Uri(scheme: 'tel', path: phone.toString());
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Unable to initiate phone call"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+  Future<void> _handleCompleteTrip(String tripId) async {
+    try {
+      await AdminApiService.completeTrip(tripId);
+      Fluttertoast.showToast(msg: "Trip marked as completed");
+      _refreshData();
+      fetchTotalTripsCompleted();
+    } catch (e) {
+      Fluttertoast.showToast(
+        msg: "Failed to complete trip: $e",
+        backgroundColor: Colors.red,
+      );
     }
   }
   void _showDispatchDialog(String tripId) {
@@ -819,229 +916,313 @@ class _AdminScreenState extends State<AdminScreen> {
       backgroundColor: AdminColors.background,
       body: SafeArea(
         child: ListView(
-        children: [
-          const DashboardHeader(),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: GridView.count(
-              crossAxisCount: MediaQuery.of(context).size.width > 900 ? 4 : 2,              shrinkWrap: true,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              physics: const NeverScrollableScrollPhysics(),
+          children: [
+            const DashboardHeader(),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: GridView.count(
+                crossAxisCount: MediaQuery.of(context).size.width > 900 ? 4 : 2,              shrinkWrap: true,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                physics: const NeverScrollableScrollPhysics(),
 
-              children: [
+                children: [
 
-                _buildPremiumCard(
-                  title: 'Total Users',
-                  value: '$totalUsers',
-                  icon: Icons.people_alt_rounded,
-                  gradient: const [
-                    Color(0xFF3B82F6),
-                    Color(0xFF1D4ED8),
-                  ],
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const UserListScreen()),
-                  ),
-                ),
-
-                _buildPremiumCard(
-                  title: 'Active Drivers',
-                  value: '$activeDrivers',
-                  icon: Icons.local_taxi,
-                  gradient: const [
-                    Color(0xFF10B981),
-                    Color(0xFF059669),
-                  ],
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const DriverListScreen()),
-                  ),
-                ),
-
-                _buildPremiumCard(
-                  title: 'Active Passengers',
-                  value: '$activePassengers',
-                  icon: Icons.person,
-                  gradient: const [
-                    Color(0xFFF59E0B),
-                    Color(0xFFD97706),
-                  ],
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const PassengerListScreen()),
-                  ),
-                ),
-
-                _buildPremiumCard(
-                  title: 'Blocked Users',
-                  value: '$blockedUsers',
-                  icon: Icons.block,
-                  gradient: const [
-                    Color(0xFFEF4444),
-                    Color(0xFFDC2626),
-                  ],
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const BlockedUserListScreen()),
-                  ),
-                ),
-
-                _buildPremiumCard(
-                  title: 'Pending Bookings',
-                  value: '$pendingBookingsCount',
-                  icon: Icons.pending_actions,
-                  gradient: const [
-                    Color(0xFF8B5CF6),
-                    Color(0xFF7C3AED),
-                  ],
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const PendingBookingsScreen()),
-                  ),
-                ),
-                _buildPremiumCard(
-                  title: 'Total Revenue',
-                  value: 'KES ${totalRevenue.toStringAsFixed(0)}',
-                  icon: Icons.payments,
-                  gradient: const [
-                    Color(0xFF16A34A),
-                    Color(0xFF15803D),
-                  ],
-                  onTap: () {
-                    // Optional: navigate to a detailed revenue/reports screen later
-                  },
-                ),
-                _buildPremiumCard(
-                  title: 'Active Rides',
-                  value: '$activeRidesCount',
-                  icon: Icons.route,
-                  gradient: const [
-                    Color(0xFF14B8A6),
-                    Color(0xFF0F766E),
-                  ],
-                  onTap: () {
-                    Navigator.push(
+                  _buildPremiumCard(
+                    title: 'Total Users',
+                    value: '$totalUsers',
+                    icon: Icons.people_alt_rounded,
+                    gradient: const [
+                      Color(0xFF3B82F6),
+                      Color(0xFF1D4ED8),
+                    ],
+                    onTap: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const ActiveRidesScreen()),
-                    ).then((_) => _refreshData());
-                  },
-                ),
-
-                _buildPremiumCard(
-                  title: 'Online Drivers',
-                  value: '$onlineDriversCount',
-                  icon: Icons.location_on,
-                  gradient: const [
-                    Color(0xFF22C55E),
-                    Color(0xFF15803D),
-                  ],
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const DriverListScreen()),
+                      MaterialPageRoute(builder: (_) => const UserListScreen()),
+                    ),
                   ),
-                ),
 
-                _buildPremiumCard(
-                  title: 'User Feedback',
-                  value: '${feedbackList.length}',
-                  icon: Icons.feedback,
-                  gradient: const [
-                    Color(0xFFF97316),
-                    Color(0xFFEA580C),
-                  ],
-                  onTap: () => Navigator.pushNamed(context, '/feedback'),
-                ),
-
-                _buildPremiumCard(
-                  title: 'Driver Ratings',
-                  value: '${ratingsList.length}',
-                  icon: Icons.star,
-                  gradient: const [
-                    Color(0xFFEAB308),
-                    Color(0xFFCA8A04),
-                  ],
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const RatingsScreen()),
+                  _buildPremiumCard(
+                    title: 'Active Drivers',
+                    value: '$activeDrivers',
+                    icon: Icons.local_taxi,
+                    gradient: const [
+                      Color(0xFF10B981),
+                      Color(0xFF059669),
+                    ],
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const DriverListScreen()),
+                    ),
                   ),
-                ),
-                _buildAnalyticsCard(
-                  icon: Icons.check_circle,
-                  title: "Total Trips",
-                  value: "$totalTripsCount",
-                  color: Colors.indigo,
-                ),
+
+                  _buildPremiumCard(
+                    title: 'Active Passengers',
+                    value: '$activePassengers',
+                    icon: Icons.person,
+                    gradient: const [
+                      Color(0xFFF59E0B),
+                      Color(0xFFD97706),
+                    ],
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PassengerListScreen()),
+                    ),
+                  ),
+
+                  _buildPremiumCard(
+                    title: 'Blocked Users',
+                    value: '$blockedUsers',
+                    icon: Icons.block,
+                    gradient: const [
+                      Color(0xFFEF4444),
+                      Color(0xFFDC2626),
+                    ],
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const BlockedUserListScreen()),
+                    ),
+                  ),
+
+                  _buildPremiumCard(
+                    title: 'Pending Bookings',
+                    value: '$pendingBookingsCount',
+                    icon: Icons.pending_actions,
+                    gradient: const [
+                      Color(0xFF8B5CF6),
+                      Color(0xFF7C3AED),
+                    ],
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PendingBookingsScreen()),
+                    ),
+                  ),
+                  _buildPremiumCard(
+                    title: 'Total Revenue',
+                    value: 'KES ${totalRevenue.toStringAsFixed(0)}',
+                    icon: Icons.payments,
+                    gradient: const [
+                      Color(0xFF16A34A),
+                      Color(0xFF15803D),
+                    ],
+                    onTap: () {
+                      // Optional: navigate to a detailed revenue/reports screen later
+                    },
+                  ),
+                  _buildPremiumCard(
+                    title: 'Active Rides',
+                    value: '$activeRidesCount',
+                    icon: Icons.route,
+                    gradient: const [
+                      Color(0xFF14B8A6),
+                      Color(0xFF0F766E),
+                    ],
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ActiveRidesScreen()),
+                      ).then((_) => _refreshData());
+                    },
+                  ),
+
+                  _buildPremiumCard(
+                    title: 'Online Drivers',
+                    value: '$onlineDriversCount',
+                    icon: Icons.location_on,
+                    gradient: const [
+                      Color(0xFF22C55E),
+                      Color(0xFF15803D),
+                    ],
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const DriverListScreen()),
+                    ),
+                  ),
+
+                  _buildPremiumCard(
+                    title: 'User Feedback',
+                    value: '${feedbackList.length}',
+                    icon: Icons.feedback,
+                    gradient: const [
+                      Color(0xFFF97316),
+                      Color(0xFFEA580C),
+                    ],
+                    onTap: () => Navigator.pushNamed(context, '/feedback'),
+                  ),
+
+                  _buildPremiumCard(
+                    title: 'Driver Ratings',
+                    value: '${ratingsList.length}',
+                    icon: Icons.star,
+                    gradient: const [
+                      Color(0xFFEAB308),
+                      Color(0xFFCA8A04),
+                    ],
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RatingsScreen()),
+                    ),
+                  ),
+                  _buildAnalyticsCard(
+                    icon: Icons.check_circle,
+                    title: "Total Trips",
+                    value: "$totalTripsCount",
+                    color: Colors.indigo,
+                  ),
 
 
 
-              ],
+                ],
+              ),
             ),
-          ),
 
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF111827),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(.25),
-                  blurRadius: 18,
-                  offset: const Offset(0, 10),
-                ),
-              ],
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF111827),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(.25),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+                    child: Row(
+                      children: [
+
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.location_on,
+                            color: Colors.green,
+                          ),
+                        ),
+
+                        const SizedBox(width: 14),
+
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+
+                              Text(
+                                "Live Fleet Map",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+
+                              SizedBox(height: 4),
+
+                              Text(
+                                "Real-time Sizemore driver locations",
+                                style: TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 13,
+                                ),
+                              ),
+
+                            ],
+                          ),
+                        ),
+
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(.15),
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(
+                                Icons.circle,
+                                color: Colors.green,
+                                size: 10,
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                "LIVE",
+                                style: TextStyle(
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+
+                      ],
+                    ),
+                  ),
+
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(24),
+                    ),
+                    child: SizedBox(
+                      height: 320,
+                      child: GoogleMap(
+                        initialCameraPosition: const CameraPosition(
+                          target: LatLng(-1.2921, 36.8219),
+                          zoom: 12,
+                        ),
+                        markers: Set<Marker>.of(_driverMarkers.values),
+                        myLocationEnabled: false,
+                        zoomControlsEnabled: false,
+                        compassEnabled: false,
+                        mapToolbarEnabled: false,
+                      ),
+                    ),
+                  ),
+
+                ],
+              ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
 
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
-                  child: Row(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  Row(
                     children: [
 
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(.15),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.location_on,
-                          color: Colors.green,
+                      const Icon(
+                        Icons.pending_actions,
+                        color: Colors.orange,
+                        size: 24,
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      const Text(
+                        "Pending Ride Requests",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
 
-                      const SizedBox(width: 14),
-
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-
-                            Text(
-                              "Live Fleet Map",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 19,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-
-                            SizedBox(height: 4),
-
-                            Text(
-                              "Real-time Sizemore driver locations",
-                              style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 13,
-                              ),
-                            ),
-
-                          ],
-                        ),
-                      ),
+                      const Spacer(),
 
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -1049,359 +1230,332 @@ class _AdminScreenState extends State<AdminScreen> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(.15),
+                          color: Colors.orange.withOpacity(.15),
                           borderRadius: BorderRadius.circular(30),
                         ),
-                        child: const Row(
-                          children: [
-                            Icon(
-                              Icons.circle,
-                              color: Colors.green,
-                              size: 10,
-                            ),
-                            SizedBox(width: 6),
-                            Text(
-                              "LIVE",
-                              style: TextStyle(
-                                color: Colors.green,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          "$pendingBookingsCount Waiting",
+                          style: const TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       )
 
                     ],
                   ),
-                ),
-
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(24),
-                  ),
-                  child: SizedBox(
-                    height: 320,
-                    child: GoogleMap(
-                      initialCameraPosition: const CameraPosition(
-                        target: LatLng(-1.2921, 36.8219),
-                        zoom: 12,
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 370,
+                    child: isLoadingTrips
+                        ? const Center(
+                      child: CircularProgressIndicator(color: Colors.red),
+                    )
+                        : pendingTrips.isEmpty
+                        ? const Center(
+                      child: Text(
+                        "No pending requests at the moment",
+                        style: TextStyle(color: Colors.white70),
                       ),
-                      markers: Set<Marker>.of(_driverMarkers.values),
-                      myLocationEnabled: false,
-                      zoomControlsEnabled: false,
-                      compassEnabled: false,
-                      mapToolbarEnabled: false,
+                    )
+                        : ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: pendingTrips.length,
+                      itemBuilder: (context, index) {
+                        final trip = pendingTrips[index];
+                        debugPrint("TRIP DATA: $trip");
+                        final riderName = trip['riderName'] ?? trip['rider']?['name'] ?? 'Unknown Rider';
+                        final fare = trip['fare'] ?? '0';
+                        final vehicle = trip['vehicleType'] ?? 'Standard';
+                        final tripId = trip['_id'];
+                        final bool isChopper = vehicle.toString().toLowerCase() == 'chopper';
+
+                        return Container(
+                          key: ValueKey(tripId),
+                          width: 320,
+                          margin: const EdgeInsets.only(right: 18),
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF111827),
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.withOpacity(.15),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      vehicle.toString().toUpperCase(),
+                                      style: const TextStyle(
+                                        color: Colors.green,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  const Icon(Icons.timer, color: Colors.orange, size: 18),
+                                ],
+                              ),
+                              const SizedBox(height: 18),
+                              const Text("Passenger", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                              const SizedBox(height: 6),
+                              Text(
+                                riderName,
+                                style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.bold),
+                              ),
+                              // 👇 NEW: phone number
+                              const SizedBox(height: 4),
+                              Text(
+                                (trip['riderPhone'] ?? trip['rider']?['phone'] ?? 'No phone').toString(),
+                                style: const TextStyle(color: Colors.white54, fontSize: 13),
+                              ),
+
+// 👇 NEW: pickup / dropoff
+                              const SizedBox(height: 14),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.trip_origin, color: Colors.green, size: 14),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      (trip['pickupLabel'] ?? trip['pickupLocation']?['address'] ?? 'Unknown pickup').toString(),
+                                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.flag, color: Colors.red, size: 14),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      (trip['dropoffLabel'] ?? trip['dropoffLocation']?['address'] ?? 'Unknown dropoff').toString(),
+                                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+
+                              const SizedBox(height: 18),
+                              Row(
+                                children: [
+                                  const Icon(Icons.payments, color: Colors.green, size: 20),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    "KES $fare",
+                                    style: const TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 18),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => _handleCancel(tripId),
+                                      icon: const Icon(Icons.close),
+                                      label: const Text("Reject"),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.red,
+                                        side: const BorderSide(color: Colors.red),
+                                        padding: const EdgeInsets.symmetric(vertical: 14),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: isChopper
+                                        ? ElevatedButton.icon(
+                                      icon: const Icon(Icons.call),
+                                      label: const Text("Call Passenger"),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.deepPurple,
+                                        padding: const EdgeInsets.symmetric(vertical: 14),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                      ),
+                                      onPressed: () async {
+                                        final phone = trip['riderPhone'] ??
+                                            trip['phone'] ??
+                                            trip['rider']?['phone'];
+
+                                        if (phone == null || phone.toString().isEmpty) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text("Passenger phone number not available"),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                          return;
+                                        }
+
+                                        final uri = Uri(scheme: 'tel', path: phone.toString());
+
+                                        if (await canLaunchUrl(uri)) {
+                                          await launchUrl(uri);
+                                        } else {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text("Unable to initiate phone call"),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    )
+                                        : ElevatedButton.icon(
+                                      icon: const Icon(Icons.local_taxi),
+                                      label: const Text("Dispatch"),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green,
+                                        padding: const EdgeInsets.symmetric(vertical: 14),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                      ),
+                                      onPressed: () async {
+                                        try {
+                                          await AdminApiService.acceptTrip(tripId);
+                                          if (!mounted) return;
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => DispatchManagementScreen(
+                                                tripId: tripId,
+                                                rideData: trip,
+                                              ),
+                                            ),
+                                          ).then((_) => _refreshData());
+                                        } catch (e) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              backgroundColor: Colors.red,
+                                              content: Text(e.toString()),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (isChopper) ...[
+                                const SizedBox(height: 10),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(Icons.check_circle_outline),
+                                    label: const Text("Mark Completed"),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.teal,
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
+                                    onPressed: () => _handleCompleteTrip(tripId),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ),
-                ),
 
-              ],
-            ),
-          ),
+                  const SizedBox(height: 20),
 
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-
-                Row(
-                  children: [
-
-                    const Icon(
-                      Icons.pending_actions,
-                      color: Colors.orange,
-                      size: 24,
-                    ),
-
-                    const SizedBox(width: 10),
-
-                    const Text(
-                      "Pending Ride Requests",
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: const Text(
+                      "Live Operations",
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                  ),
 
-                    const Spacer(),
+                  const SizedBox(height: 16),
 
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(.15),
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      child: Text(
-                        "$pendingBookingsCount Waiting",
-                        style: const TextStyle(
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount:
+                      MediaQuery.of(context).size.width > 900 ? 4 : 2,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                      childAspectRatio: 2.3,
+                      children: [
+                        _buildAnalyticsCard(
+                          icon: Icons.local_taxi,
+                          title: "Online Drivers",
+                          value: "$onlineDriversCount",
+                          color: Colors.green,
+                        ),
+                        _buildAnalyticsCard(
+                          icon: Icons.route,
+                          title: "Active Trips",
+                          value: "$activeRidesCount",
+                          color: Colors.blue,
+                        ),
+                        _buildAnalyticsCard(
+                          icon: Icons.pending_actions,
+                          title: "Pending Requests",
+                          value: "$pendingBookingsCount",
                           color: Colors.orange,
-                          fontWeight: FontWeight.bold,
                         ),
-                      ),
-                    )
-
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 200,
-                  child: isLoadingTrips
-                      ? const Center(
-                    child: CircularProgressIndicator(color: Colors.red),
-                  )
-                      : pendingTrips.isEmpty
-                      ? const Center(
-                    child: Text(
-                      "No pending requests at the moment",
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                  )
-                      : ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: pendingTrips.length,
-                    itemBuilder: (context, index) {
-                      final trip = pendingTrips[index];
-                      final riderName = trip['riderName'] ?? 'Unknown Rider';
-                      final fare = trip['fare'] ?? '0';
-                      final vehicle = trip['vehicleType'] ?? 'Standard';
-                      final tripId = trip['_id'];
-
-                      return Container(
-                        width: 320,
-                        margin: const EdgeInsets.only(right: 18),
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF111827),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: Colors.white10),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(.25),
-                              blurRadius: 18,
-                              offset: const Offset(0, 10),
-                            ),
+                        _buildAnalyticsCard(
+                          icon: Icons.people,
+                          title: "Passengers",
+                          value: "$activePassengers",
+                          color: Colors.purple,
+                        ),
+                        _buildPremiumCard(
+                          title: 'Total Trips',
+                          value: '$totalTripsCount',
+                          icon: Icons.check_circle,
+                          gradient: const [
+                            Color(0xFF6366F1),
+                            Color(0xFF4338CA),
                           ],
+                          onTap: () {
+                            // Optional: navigate to a completed trips history screen
+                          },
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withOpacity(.15),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    vehicle.toString().toUpperCase(),
-                                    style: const TextStyle(
-                                      color: Colors.green,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ),
-                                const Spacer(),
-                                const Icon(
-                                  Icons.timer,
-                                  color: Colors.orange,
-                                  size: 18,
-                                ),
-                              ],
-                            ),
-
-                            const SizedBox(height: 18),
-
-                            const Text(
-                              "Passenger",
-                              style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 12,
-                              ),
-                            ),
-
-                            const SizedBox(height: 6),
-
-                            Text(
-                              riderName,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 19,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-
-                            const SizedBox(height: 18),
-
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.payments,
-                                  color: Colors.green,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  "KES $fare",
-                                  style: const TextStyle(
-                                    color: Colors.green,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            const Spacer(),
-
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () => _handleCancel(tripId),
-                                    icon: const Icon(Icons.close),
-                                    label: const Text("Reject"),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.red,
-                                      side: const BorderSide(color: Colors.red),
-                                      padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                                const SizedBox(width: 12),
-
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    icon: const Icon(Icons.local_taxi),
-                                    label: const Text("Dispatch"),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.green,
-                                      padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                    ),
-                                    onPressed: () async {
-                                      try {
-                                        await AdminApiService.acceptTrip(tripId);
-
-                                        if (!mounted) return;
-
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                DispatchManagementScreen(
-                                                  tripId: tripId,
-                                                  rideData: trip,
-                                                ),
-                                          ),
-                                        ).then((_) => _refreshData());
-                                      } catch (e) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            backgroundColor: Colors.red,
-                                            content: Text(e.toString()),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: const Text(
-                    "Live Operations",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
+                      ],
                     ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount:
-                    MediaQuery.of(context).size.width > 900 ? 4 : 2,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 2.3,
-                    children: [
-                      _buildAnalyticsCard(
-                        icon: Icons.local_taxi,
-                        title: "Online Drivers",
-                        value: "$onlineDriversCount",
-                        color: Colors.green,
-                      ),
-                      _buildAnalyticsCard(
-                        icon: Icons.route,
-                        title: "Active Trips",
-                        value: "$activeRidesCount",
-                        color: Colors.blue,
-                      ),
-                      _buildAnalyticsCard(
-                        icon: Icons.pending_actions,
-                        title: "Pending Requests",
-                        value: "$pendingBookingsCount",
-                        color: Colors.orange,
-                      ),
-                      _buildAnalyticsCard(
-                        icon: Icons.people,
-                        title: "Passengers",
-                        value: "$activePassengers",
-                        color: Colors.purple,
-                      ),
-                      _buildPremiumCard(
-                        title: 'Total Trips',
-                        value: '$totalTripsCount',
-                        icon: Icons.check_circle,
-                        gradient: const [
-                          Color(0xFF6366F1),
-                          Color(0xFF4338CA),
-                        ],
-                        onTap: () {
-                          // Optional: navigate to a completed trips history screen
-                        },
-                      ),
-                    ],
-                  ),
-                ),              ],
+                  ),              ],
+              ),
             ),
-          ),
-          // buildFeedbackSection(),
-        ],
+            // buildFeedbackSection(),
+          ],
         ),
 
       ),
